@@ -97,7 +97,9 @@ export default function CampaignDetailPage() {
   if (!campaign) return <p className="p-12 text-center">Campaign not found.</p>;
 
   const processed = campaign.sentCount + campaign.failedCount + campaign.skippedCount;
-  const progressPercent = campaign.totalRecipients > 0 ? (processed / campaign.totalRecipients) * 100 : 0;
+  // Use the larger of processed count or totalRecipients for percentage denominator to avoid > 100% due to bad data
+  const displayTotal = Math.max(processed, campaign.totalRecipients);
+  const progressPercent = displayTotal > 0 ? (campaign.sentCount / displayTotal) * 100 : 0; // Base percentage on *sent* vs displayTotal
 
   return (
     <main className="flex min-h-screen flex-col items-center p-12 bg-gray-50">
@@ -123,9 +125,11 @@ export default function CampaignDetailPage() {
               {campaign.pdfTemplatePath && <div><strong>PDF Template:</strong> Attached</div>}
               {/* Progress Bar */}
               <div className="col-span-2 md:col-span-4">
-                 <strong>Progress:</strong> {processed} / {campaign.totalRecipients} ({progressPercent.toFixed(0)}%)
-                 <div className="w-full bg-gray-200 rounded-full h-2.5 mt-1">
-                    <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${progressPercent}%` }}></div>
+                 {/* Clarify the numbers shown */}
+                 <strong>Progress:</strong> {processed} processed (out of {campaign.totalRecipients} expected recipients)
+                 <div className="w-full bg-gray-200 rounded-full h-2.5 mt-1" title={`${progressPercent.toFixed(1)}% Sent`}>
+                    {/* Progress bar now represents % Sent out of the displayTotal */}
+                    <div className="bg-green-600 h-2.5 rounded-full" style={{ width: `${progressPercent}%` }}></div>
                  </div>
                  <div className="flex justify-between text-xs mt-1">
                     <span className="text-green-600">Sent: {campaign.sentCount}</span>

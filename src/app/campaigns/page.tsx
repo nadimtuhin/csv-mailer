@@ -143,13 +143,16 @@ export default function CampaignsListPage() {
                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {campaigns.map((campaign) => {
-                    const processed = campaign.sentCount + campaign.failedCount + campaign.skippedCount;
-                    const progressPercent = campaign.totalRecipients > 0 ? (processed / campaign.totalRecipients) * 100 : 0;
-                    return (
-                      <tr key={campaign.id}>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{campaign.name || campaign.id}</td>
+                 <tbody className="bg-white divide-y divide-gray-200">
+                   {campaigns.map((campaign) => {
+                     const processed = campaign.sentCount + campaign.failedCount + campaign.skippedCount;
+                     // Use the larger of processed count or totalRecipients for percentage denominator
+                     const displayTotal = Math.max(processed, campaign.totalRecipients);
+                     // Base percentage on *sent* vs displayTotal
+                     const progressPercent = displayTotal > 0 ? (campaign.sentCount / displayTotal) * 100 : 0;
+                     return (
+                       <tr key={campaign.id}>
+                         <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{campaign.name || campaign.id}</td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
                                campaign.status === 'completed' ? 'bg-green-100 text-green-800' :
@@ -158,15 +161,17 @@ export default function CampaignsListPage() {
                                'bg-gray-100 text-gray-800' // pending, queued
                            }`}>
                              {campaign.status}
-                           </span>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                           {processed} / {campaign.totalRecipients} ({progressPercent.toFixed(0)}%)
-                           <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
-                             <div className="bg-blue-600 h-1.5 rounded-full" style={{ width: `${progressPercent}%` }}></div>
-                           </div>
-                           <span className="text-xs text-green-600">S: {campaign.sentCount}</span>, <span className="text-xs text-red-600">F: {campaign.failedCount}</span>, <span className="text-xs text-gray-500">K: {campaign.skippedCount}</span>
-                        </td>
+                            </span>
+                         </td>
+                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                            {/* Progress bar represents % Sent out of the displayTotal */}
+                            {/* Added margin-bottom to the progress bar div */}
+                            <div className="w-full bg-gray-200 rounded-full h-1.5 mb-1" title={`${progressPercent.toFixed(1)}% Sent`}>
+                              <div className="bg-green-600 h-1.5 rounded-full" style={{ width: `${progressPercent}%` }}></div>
+                            </div>
+                            {/* Display S/F/K counts below the bar */}
+                            <span className="text-xs text-green-600">S: {campaign.sentCount}</span>, <span className="text-xs text-red-600">F: {campaign.failedCount}</span>, <span className="text-xs text-gray-500">K: {campaign.skippedCount}</span>
+                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{format(new Date(campaign.createdAt), 'PPpp')}</td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm font-medium space-x-2">
                           <Link href={`/campaigns/${campaign.id}`} className="text-indigo-600 hover:text-indigo-900">Details</Link>
