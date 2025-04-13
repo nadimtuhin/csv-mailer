@@ -1,5 +1,11 @@
+import type { Metadata } from 'next';
 import TemplateManager from '@/components/TemplateManager';
 import Link from 'next/link';
+
+export const metadata: Metadata = {
+  title: 'CSV Mailer - Manage Templates',
+  description: 'Manage your email templates, create new ones, or upload existing templates.',
+};
 
 export default function TemplatesPage() {
   return (
