@@ -174,12 +174,18 @@ export default function CampaignsListPage() {
                          </td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{format(new Date(campaign.createdAt), 'PPpp')}</td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm font-medium space-x-2">
-                          <Link href={`/campaigns/${campaign.id}`} className="text-indigo-600 hover:text-indigo-900">Details</Link>
+                          {/* Details Button */}
+                          <Link
+                            href={`/campaigns/${campaign.id}`}
+                            className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                          >
+                            Details
+                          </Link>
                            {/* Process Button (Initial Run) */}
                            {(campaign.status === 'queued' || campaign.status === 'pending') && (
                                <button
                                  onClick={() => triggerProcessing(campaign.id, false)}
-                                 className="text-green-600 hover:text-green-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                                 className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
                                  disabled={isProcessing === campaign.id}
                                >
                                  {isProcessing === campaign.id ? 'Processing...' : 'Process'}
@@ -189,7 +195,7 @@ export default function CampaignsListPage() {
                            {campaign.failedCount > 0 && campaign.status !== 'processing' && (
                               <button
                                 onClick={() => triggerProcessing(campaign.id, true)}
-                                className="text-blue-600 hover:text-blue-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                                 disabled={isProcessing === campaign.id}
                               >
                                 {isProcessing === campaign.id ? 'Retrying...' : 'Retry Failed'}
@@ -198,7 +204,7 @@ export default function CampaignsListPage() {
                            {/* Archive button */}
                            <button
                              onClick={() => handleArchiveCampaign(campaign.id)}
-                             className="text-orange-600 hover:text-orange-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                             className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
                              disabled={isArchiving === campaign.id}
                            >
                              {isArchiving === campaign.id ? 'Archiving...' : 'Archive'}
