@@ -31,6 +31,9 @@ export default function TemplateManager() {
   const [editorContent, setEditorContent] = useState('');
   const [isUploadingDocx, setIsUploadingDocx] = useState(false); // State for DOCX upload
   const [docxError, setDocxError] = useState<string | null>(null); // Specific error for DOCX
+  const [isArchiving, setIsArchiving] = useState<string | null>(null); // Track which template is being archived
+  const [archiveError, setArchiveError] = useState<string | null>(null); // Specific error for archiving
+  const [isEditorReadOnly, setIsEditorReadOnly] = useState(false); // State for editor read-only mode
 
   // Function to fetch templates
   const fetchTemplates = useCallback(async () => {
@@ -79,17 +82,54 @@ export default function TemplateManager() {
     if (error === 'Template name and content cannot be empty.') {
        setError(null); // Clear general form error
        setDocxError(null); // Clear docx error
+     }
+   };
+
+  // Handler for archiving a template
+  const handleArchiveTemplate = async (templateId: string) => {
+    // Optional: Add a confirmation dialog
+    if (!window.confirm('Are you sure you want to archive this template? Archived templates can be viewed separately.')) {
+      return;
+    }
+
+    setIsArchiving(templateId); // Indicate archiving is in progress
+    setArchiveError(null); // Clear previous archive errors
+    setError(null); // Clear general errors
+
+    try {
+      // Use PATCH method to the specific template ID endpoint
+      const response = await fetch(`/api/templates/${templateId}`, {
+        method: 'PATCH',
+        // No body needed if the endpoint implicitly handles archiving
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to archive template: ${response.statusText}`);
+      }
+
+      // Refresh the list (which now excludes archived items by default)
+      await fetchTemplates();
+
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'An unknown error occurred during archiving.';
+      setArchiveError(message); // Set specific archive error
+      console.error("Archive template error:", err);
+    } finally {
+      setIsArchiving(null); // Reset archiving state
     }
   };
 
+
    // Function to open the form for creating a new template
-  const handleShowCreateForm = () => {
+   const handleShowCreateForm = () => {
     setFormMode('create');
     setEditingTemplateId(null);
     setFormTemplateName('');
     setEditorContent('');
     setError(null);
     setDocxError(null); // Reset docx error
+    setIsEditorReadOnly(false); // Editor is editable in create mode
     setShowForm(true);
   };
 
@@ -101,6 +141,7 @@ export default function TemplateManager() {
     setEditorContent(template.htmlContent);
     setError(null);
     setDocxError(null); // Reset docx error
+    setIsEditorReadOnly(true); // Start in read-only mode for editing
     setShowForm(true);
   };
 
@@ -202,11 +243,15 @@ export default function TemplateManager() {
 
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-medium text-gray-600">Existing Templates</h3>
+      <h3 className="text-lg font-medium text-gray-600">Active Templates</h3> {/* Updated title */}
+      {/* TODO: Add toggle/button to show archived templates */}
       {isLoading && <p>Loading templates...</p>}
-      {error && <p className="text-red-600">Error loading templates: {error}</p>}
-      {!isLoading && !error && templates.length === 0 && (
-        <p className="text-sm text-gray-500">No templates created yet.</p>
+      {/* Display general loading/fetch error */}
+      {error && !archiveError && <p className="text-red-600">Error loading templates: {error}</p>}
+      {/* Display specific archive error */}
+      {archiveError && <p className="text-red-600">Error archiving template: {archiveError}</p>}
+      {!isLoading && !error && !archiveError && templates.length === 0 && (
+        <p className="text-sm text-gray-500">No active templates found.</p> // Updated message
       )}
       {!isLoading && !error && templates.length > 0 && (
         <ul className="space-y-2">
@@ -221,9 +266,14 @@ export default function TemplateManager() {
                     className="text-sm text-yellow-600 hover:text-yellow-800"
                   >
                     Edit
-                 </button>
-                 {/* TODO: Add Delete button functionality */}
-                 {/* <button className="text-sm text-red-600 hover:text-red-800">Delete</button> */}
+                  </button>
+                  <button
+                    onClick={() => handleArchiveTemplate(template.id)} // Use archive handler
+                    className={`text-sm text-orange-600 hover:text-orange-800 disabled:opacity-50 disabled:cursor-not-allowed`} // Changed color
+                    disabled={isArchiving === template.id} // Disable while archiving
+                  >
+                    {isArchiving === template.id ? 'Archiving...' : 'Archive'} {/* Changed text */}
+                  </button>
               </div>
             </li>
           ))}
@@ -287,29 +337,41 @@ export default function TemplateManager() {
            </div>
            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Template Content
-              </label>
-              <RichTextEditor
-                content={editorContent}
-                onChange={handleEditorChange}
-                placeholder="Enter your email template HTML here. Use {{column_name}} for placeholders..."
-              />
-           </div>
-            {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
-           <div className="flex justify-end space-x-3">
+                 Template Content
+               </label>
+               {/* Conditionally show Edit Content button */}
+               {formMode === 'edit' && isEditorReadOnly && (
+                 <button
+                   type="button"
+                   onClick={() => setIsEditorReadOnly(false)}
+                   className="mb-2 px-3 py-1 bg-yellow-500 text-white text-sm rounded-md hover:bg-yellow-600"
+                 >
+                   Edit Content
+                 </button>
+               )}
+               <RichTextEditor
+                 content={editorContent}
+                 onChange={handleEditorChange}
+                 placeholder="Enter your email template HTML here. Use {{column_name}} for placeholders..."
+                 readOnly={isEditorReadOnly} // Pass readOnly state
+               />
+            </div>
+             {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
+            <div className="flex justify-end space-x-3 mt-4"> {/* Added margin-top */}
               <button
                 onClick={() => setShowForm(false)} // Use unified state
                 className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
               >
                 Cancel
-              </button>
-              <button
-                onClick={handleSaveTemplate} // Use unified handler
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-                disabled={isSaving || !formTemplateName || !editorContent}
-              >
-                {isSaving ? 'Saving...' : (formMode === 'create' ? 'Save Template' : 'Update Template')}
-              </button>
+               </button>
+               {/* Disable save/update if editor is read-only */}
+               <button
+                 onClick={handleSaveTemplate} // Use unified handler
+                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                 disabled={isSaving || !formTemplateName || !editorContent || isEditorReadOnly}
+               >
+                 {isSaving ? 'Saving...' : (formMode === 'create' ? 'Save Template' : 'Update Template')}
+               </button>
            </div>
         </div>
       )}

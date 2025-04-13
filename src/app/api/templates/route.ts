@@ -1,10 +1,18 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma'; // Import the Prisma client instance
 
-// GET /api/templates - Retrieve all templates
-export async function GET() {
+import { NextRequest } from 'next/server'; // Import NextRequest for query params
+
+// GET /api/templates - Retrieve non-archived templates by default
+export async function GET(request: NextRequest) { // Add request parameter
+  const { searchParams } = new URL(request.url);
+  const includeArchived = searchParams.get('includeArchived') === 'true';
+
   try {
     const templates = await prisma.template.findMany({
+      where: {
+        isArchived: includeArchived ? undefined : false, // Filter out archived unless requested
+      },
       orderBy: {
         createdAt: 'desc', // Order by creation date, newest first
       },
@@ -64,6 +72,22 @@ export async function PUT(request: Request) {
     if (!id || !name || !htmlContent) {
       return NextResponse.json(
         { message: 'Missing id, name, or htmlContent' },
+        { status: 400 }
+      );
+    }
+
+    // Check if the template exists and is not archived before updating
+    const existingTemplate = await prisma.template.findUnique({
+      where: { id: id },
+    });
+
+    if (!existingTemplate) {
+      return NextResponse.json({ message: 'Template not found' }, { status: 404 });
+    }
+
+    if (existingTemplate.isArchived) {
+      return NextResponse.json(
+        { message: 'Cannot update an archived template' },
         { status: 400 }
       );
     }

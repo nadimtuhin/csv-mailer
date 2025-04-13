@@ -30,6 +30,7 @@ interface RichTextEditorProps {
   content: string;
   onChange: (newContent: string) => void;
   placeholder?: string;
+  readOnly?: boolean; // Add readOnly prop
 }
 
 // Enhanced Toolbar Component
@@ -140,9 +141,10 @@ const MenuBar = ({ editor, setLink }: { editor: Editor | null, setLink: () => vo
 };
 
 
-export default function RichTextEditor({ content, onChange, placeholder }: RichTextEditorProps) {
+export default function RichTextEditor({ content, onChange, placeholder, readOnly = false }: RichTextEditorProps) { // Destructure readOnly, default to false
 
   const editor = useEditor({
+    editable: !readOnly, // Set editable based on readOnly prop
     extensions: [
       StarterKit.configure({
         // Exclude default Table extensions if providing custom ones
@@ -203,11 +205,11 @@ export default function RichTextEditor({ content, onChange, placeholder }: RichT
 
 
   return (
-    <div className="border border-gray-300 rounded-md">
-      {/* Pass setLink down to MenuBar */}
-      <MenuBar editor={editor} setLink={setLink} />
-       {/* Optional: Bubble Menu for inline formatting like links */}
-       {editor && <BubbleMenu editor={editor} tippyOptions={{ duration: 100 }} className="bg-black text-white text-xs p-1 rounded shadow flex gap-1">
+    <div className={`border border-gray-300 rounded-md ${readOnly ? 'bg-gray-100' : ''}`}> {/* Optional: visual indication for read-only */}
+      {/* Conditionally render MenuBar */}
+      {!readOnly && <MenuBar editor={editor} setLink={setLink} />}
+       {/* Optional: Bubble Menu for inline formatting like links (might also hide if readOnly) */}
+       {!readOnly && editor && <BubbleMenu editor={editor} tippyOptions={{ duration: 100 }} className="bg-black text-white text-xs p-1 rounded shadow flex gap-1">
          <button
            onClick={setLink} // Now accessible here
            className={editor.isActive('link') ? 'bg-gray-600 px-1 rounded' : 'px-1 rounded hover:bg-gray-700'}
@@ -216,11 +218,12 @@ export default function RichTextEditor({ content, onChange, placeholder }: RichT
          </button>
          {editor.isActive('link') && (
            <button onClick={() => editor.chain().focus().unsetLink().run()} className="px-1 rounded hover:bg-gray-700">
-             Unlink
-           </button>
-         )}
-       </BubbleMenu>}
-      <EditorContent editor={editor} />
+            Unlink
+          </button>
+        )}
+      </BubbleMenu>}
+      {/* Add readOnly class to content area if needed */}
+      <EditorContent editor={editor} className={readOnly ? 'cursor-not-allowed' : ''} />
     </div>
   );
 }
