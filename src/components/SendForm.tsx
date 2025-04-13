@@ -108,6 +108,13 @@ export default function SendForm({
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+
+    // Prevent submission if preview modal is open
+    if (showPreview) {
+        console.log("Submission prevented: Preview modal is open.");
+        return;
+    }
+
     setIsSending(true);
     setFormError(null);
 
@@ -347,7 +354,7 @@ export default function SendForm({
 
       <button
         type="submit"
-        disabled={isSending || isUploadingPdf || isLoadingTemplates || !csvData.length || !selectedTemplateId}
+        disabled={showPreview || isSending || isUploadingPdf || isLoadingTemplates || !csvData.length || !selectedTemplateId}
         className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
       >
         {isSending ? 'Creating Campaign...' : 'Create & Queue Campaign'}
