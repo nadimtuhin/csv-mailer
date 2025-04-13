@@ -6,9 +6,9 @@ import { NextRequest } from 'next/server'; // Use NextRequest
 // GET /api/campaigns/[campaignId] - Get details for a specific campaign
 export async function GET(
   request: NextRequest,
-  { params }: { params: { campaignId: string } } // Standard destructuring for params
+  context: { params: { campaignId: string } } // Use context object
 ) {
-  const { campaignId } = params; // Destructure campaignId from params
+  const campaignId = context.params.campaignId; // Access campaignId from context.params
 
   if (!campaignId) {
       return NextResponse.json({ message: 'Campaign ID is required.' }, { status: 400 });
@@ -58,9 +58,9 @@ export async function GET(
 // PATCH /api/campaigns/[campaignId] - Archive a specific campaign
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { campaignId: string } } // Standard destructuring for params
+  context: { params: { campaignId: string } } // Use context object
 ) {
-  const { campaignId } = params; // Destructure campaignId from params
+  const campaignId = context.params.campaignId; // Access campaignId from context.params
 
   if (!campaignId) {
     return NextResponse.json({ message: 'Campaign ID is required.' }, { status: 400 });
