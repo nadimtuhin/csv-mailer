@@ -1,12 +1,9 @@
 'use client';
 
-'use client';
-
 import React, { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation'; // Import useRouter
-import RichTextEditor from './RichTextEditor'; // Import the editor
+import { useRouter } from 'next/navigation';
+import RichTextEditor from './RichTextEditor';
 
-// Define the structure of a template object (matching API)
 interface Template {
   id: string;
   name: string;
@@ -14,30 +11,20 @@ interface Template {
   createdAt: string;
 }
 
-// No props needed for now
-// interface TemplateManagerProps {
-//   // TODO: Add props for selecting a template, passing headers for placeholders
-//   // onTemplateSelect: (template: Template) => void;
-//   // availableHeaders: string[];
-// }
-
-
 export default function TemplateManager() {
   const [templates, setTemplates] = useState<Template[]>([]);
-  const router = useRouter(); // Get router instance
+  const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false); // Keep for create form visibility
-  // formMode, editingTemplateId, isEditorReadOnly removed as editing is handled on a separate page
-  const [formTemplateName, setFormTemplateName] = useState(''); // Keep for create form
-  const [editorContent, setEditorContent] = useState(''); // Keep for create form
-  const [isUploadingDocx, setIsUploadingDocx] = useState(false); // State for DOCX upload
-  const [docxError, setDocxError] = useState<string | null>(null); // Specific error for DOCX
-  const [isArchiving, setIsArchiving] = useState<string | null>(null); // Track which template is being archived
-  const [archiveError, setArchiveError] = useState<string | null>(null); // Specific error for archiving
+  const [showForm, setShowForm] = useState(false);
+  const [formTemplateName, setFormTemplateName] = useState('');
+  const [editorContent, setEditorContent] = useState('');
+  const [isUploadingDocx, setIsUploadingDocx] = useState(false);
+  const [docxError, setDocxError] = useState<string | null>(null);
+  const [isArchiving, setIsArchiving] = useState<string | null>(null);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
 
-  // Function to fetch templates
   const fetchTemplates = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -54,88 +41,51 @@ export default function TemplateManager() {
     } finally {
       setIsLoading(false);
     }
-  }, []); // No dependencies, fetch logic is self-contained
+  }, []);
 
-  // Fetch existing templates on mount
   useEffect(() => {
-    const fetchTemplates = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const response = await fetch('/api/templates');
-        if (!response.ok) {
-          throw new Error(`Failed to fetch templates: ${response.statusText}`);
-        }
-        const data = await response.json();
-        setTemplates(data);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'An unknown error occurred');
-        console.error("Fetch templates error:", err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
     fetchTemplates();
   }, [fetchTemplates]);
 
   const handleEditorChange = (content: string) => {
     setEditorContent(content);
-    // Clear validation error when user starts typing
     if (error === 'Template name and content cannot be empty.') {
-       setError(null); // Clear general form error
-       setDocxError(null); // Clear docx error
+       setError(null);
+       setDocxError(null);
      }
    };
 
-  // Handler for archiving a template
   const handleArchiveTemplate = async (templateId: string) => {
-    // Optional: Add a confirmation dialog
     if (!window.confirm('Are you sure you want to archive this template? Archived templates can be viewed separately.')) {
       return;
     }
-
-    setIsArchiving(templateId); // Indicate archiving is in progress
-    setArchiveError(null); // Clear previous archive errors
-    setError(null); // Clear general errors
-
+    setIsArchiving(templateId);
+    setArchiveError(null);
+    setError(null);
     try {
-      // Use PATCH method to the specific template ID endpoint
-      const response = await fetch(`/api/templates/${templateId}`, {
-        method: 'PATCH',
-        // No body needed if the endpoint implicitly handles archiving
-      });
-
+      const response = await fetch(`/api/templates/${templateId}`, { method: 'PATCH' });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || `Failed to archive template: ${response.statusText}`);
       }
-
-      // Refresh the list (which now excludes archived items by default)
       await fetchTemplates();
-
     } catch (err) {
       const message = err instanceof Error ? err.message : 'An unknown error occurred during archiving.';
-      setArchiveError(message); // Set specific archive error
+      setArchiveError(message);
       console.error("Archive template error:", err);
     } finally {
-      setIsArchiving(null); // Reset archiving state
+      setIsArchiving(null);
     }
   };
 
-
-   // Function to open the form for creating a new template
    const handleShowCreateForm = () => {
-    // No need to set formMode or editingTemplateId
     setFormTemplateName('');
     setEditorContent('');
     setError(null);
-    setDocxError(null); // Reset docx error
+    setDocxError(null);
     setShowForm(true);
   };
 
-  // handleShowEditForm removed - navigation handles editing now
-
-  // Save handler only for creating new templates
   const handleSaveTemplate = async () => {
     if (!formTemplateName.trim() || !editorContent.trim()) {
       setError('Template name and content cannot be empty.');
@@ -143,32 +93,23 @@ export default function TemplateManager() {
     }
     setIsSaving(true);
     setError(null);
-
-    // Always POST to create a new template
     const url = '/api/templates';
     const method = 'POST';
     const body = JSON.stringify({ name: formTemplateName, htmlContent: editorContent });
-
     try {
       const response = await fetch(url, {
         method: method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: body,
       });
-
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || `Failed to create template: ${response.statusText}`);
       }
-
-      // Reset form, hide, and refetch
       setFormTemplateName('');
       setEditorContent('');
       setShowForm(false);
-      await fetchTemplates(); // Refresh the list
-
+      await fetchTemplates();
     } catch (err) {
        setError(err instanceof Error ? err.message : `An unknown error occurred while saving`);
        console.error("Save template error:", err);
@@ -177,46 +118,32 @@ export default function TemplateManager() {
     }
   };
 
-  // Handler for DOCX file input change
   const handleDocxFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    event.target.value = ''; // Reset file input to allow re-uploading the same file
-
+    event.target.value = '';
     if (!file) return;
-
-    // Basic client-side type check (optional, backend validates too)
-     if (!file.name.toLowerCase().endsWith('.docx') && file.type !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+    if (!file.name.toLowerCase().endsWith('.docx') && file.type !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
         setDocxError('Please select a .docx file.');
         return;
      }
-
     setIsUploadingDocx(true);
     setDocxError(null);
-    setError(null); // Clear general errors
-
+    setError(null);
     const formData = new FormData();
     formData.append('file', file);
-
     try {
       const response = await fetch('/api/templates/upload-docx', {
         method: 'POST',
-        body: formData, // Send as FormData
+        body: formData,
       });
-
       const result = await response.json();
-
       if (!response.ok) {
         throw new Error(result.message || `Failed to upload/convert DOCX: ${response.statusText}`);
       }
-
-      // Set editor content with converted HTML
-      // IMPORTANT: This replaces existing content in the editor
       setEditorContent(result.htmlContent || '');
-      // Optionally try to prefill name from filename if name field is empty
       if (!formTemplateName) {
           setFormTemplateName(file.name.replace(/\.docx$/i, ''));
       }
-
     } catch (err) {
        const message = err instanceof Error ? err.message : 'An unknown error occurred during DOCX processing.';
        setDocxError(message);
@@ -226,133 +153,133 @@ export default function TemplateManager() {
     }
   };
 
-
   return (
-    <div className="space-y-4">
-      <h3 className="text-lg font-medium text-gray-600">Active Templates</h3> {/* Updated title */}
-      {/* TODO: Add toggle/button to show archived templates */}
-      {isLoading && <p>Loading templates...</p>}
-      {/* Display general loading/fetch error */}
-      {error && !archiveError && <p className="text-red-600">Error loading templates: {error}</p>}
-      {/* Display specific archive error */}
-      {archiveError && <p className="text-red-600">Error archiving template: {archiveError}</p>}
-      {!isLoading && !error && !archiveError && templates.length === 0 && (
-        <p className="text-sm text-gray-500">No active templates found.</p> // Updated message
-      )}
-      {!isLoading && !error && templates.length > 0 && (
-        <ul className="space-y-2">
-          {templates.map((template) => (
-            <li key={template.id} className="border p-3 rounded-md bg-gray-50 flex justify-between items-center gap-2">
-              <span className="font-medium flex-1 truncate">{template.name}</span>
-              <div className="flex gap-2">
-                 {/* TODO: Add Select button functionality */}
-                 <button className="text-sm text-blue-600 hover:text-blue-800">Select</button>
-                 {/* Navigate to the dedicated edit page */}
-                 <button
-                    onClick={() => router.push(`/templates/${template.id}/edit`)}
-                    className="text-sm text-yellow-600 hover:text-yellow-800"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleArchiveTemplate(template.id)} // Use archive handler
-                    className={`text-sm text-orange-600 hover:text-orange-800 disabled:opacity-50 disabled:cursor-not-allowed`} // Changed color
-                    disabled={isArchiving === template.id} // Disable while archiving
-                  >
-                    {isArchiving === template.id ? 'Archiving...' : 'Archive'} {/* Changed text */}
-                  </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+    <div className="space-y-6 p-4 md:p-6">
+      <h2 className="text-xl font-semibold text-gray-800">Manage Templates</h2>
 
-      <hr className="my-6" />
+      {/* Template List Section */}
+      <div>
+        <h3 className="text-lg font-medium text-gray-700 mb-3">Active Templates</h3>
+        {isLoading && <p className="text-sm text-gray-500">Loading templates...</p>}
+        {error && !archiveError && <p className="text-sm text-red-600">Error loading templates: {error}</p>}
+        {archiveError && <p className="text-sm text-red-600">Error archiving template: {archiveError}</p>}
+        {!isLoading && !error && !archiveError && templates.length === 0 && (
+          <p className="text-sm text-gray-500">No active templates found.</p>
+        )}
+        {!isLoading && !error && !archiveError && templates.length > 0 && (
+          <ul className="space-y-3">
+            {templates.map((template) => (
+              <li key={template.id} className="border p-3 rounded-lg bg-white shadow-sm flex justify-between items-center gap-4">
+                <span className="font-medium text-gray-800 flex-1 truncate">{template.name}</span>
+                <div className="flex gap-2 flex-shrink-0">
+                   <button
+                      type="button"
+                      onClick={() => router.push(`/templates/${template.id}/edit`)}
+                      className="px-3 py-1 text-xs font-semibold text-white bg-yellow-500 rounded-md shadow-sm hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:ring-offset-1"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleArchiveTemplate(template.id)}
+                      className={`px-3 py-1 text-xs font-semibold text-white bg-red-500 rounded-md shadow-sm hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed`}
+                      disabled={isArchiving === template.id}
+                    >
+                      {isArchiving === template.id ? 'Archiving...' : 'Archive'}
+                    </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
-      {!showForm ? (
-         <button
-            onClick={handleShowCreateForm} // Use specific handler
-            className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
-          >
-           Create New Template
-         </button>
-      ) : (
-        <div className="space-y-4 border p-4 rounded-md bg-white">
-           {/* Title is always Create */}
-           <h3 className="text-lg font-medium text-gray-600 mb-4">
+      <hr className="my-6 border-gray-200" />
+
+      {/* Create Template Section */}
+      <div>
+        {!showForm ? (
+           <button
+              type="button"
+              onClick={handleShowCreateForm}
+              className="w-full px-4 py-2 font-medium text-white bg-indigo-600 rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            >
              Create New Template
-           </h3>
+           </button>
+        ) : (
+          <div className="space-y-5 border p-4 rounded-lg bg-gray-50 shadow-sm">
+             <h3 className="text-lg font-medium text-gray-700">Create New Template</h3>
 
-            {/* Option to Upload DOCX */}
-            <div className="mb-4 p-3 border border-dashed rounded-md bg-gray-50">
-                 <label htmlFor="docxUpload" className="block text-sm font-medium text-gray-700 mb-1">
-                   Or Upload Word Document (.docx) to Prefill Content
-                 </label>
-                 <input
-                   type="file"
-                   id="docxUpload"
-                   accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                   onChange={handleDocxFileChange}
-                   disabled={isUploadingDocx}
-                   className="block w-full text-sm text-gray-500 file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
-                 />
-                 {isUploadingDocx && <p className="text-sm text-blue-600 mt-1">Processing document...</p>}
-                 {docxError && <p className="text-sm text-red-600 mt-1">{docxError}</p>}
-                 <p className="text-xs text-gray-500 mt-1">Uploading a DOCX will replace the current content in the editor below.</p>
+              <div className="p-3 border border-dashed border-gray-300 rounded-md bg-white">
+                   <label htmlFor="docxUpload" className="block text-sm font-medium text-gray-700 mb-1">
+                     Or Upload Word Document (.docx) to Prefill Content
+                   </label>
+                   <input
+                     type="file"
+                     id="docxUpload"
+                     accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                     onChange={handleDocxFileChange}
+                     disabled={isUploadingDocx}
+                     className="block w-full text-sm text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-50 cursor-pointer"
+                   />
+                   {isUploadingDocx && <p className="text-sm text-indigo-600 mt-1 animate-pulse">Processing document...</p>}
+                   {docxError && <p className="text-sm text-red-600 mt-1">{docxError}</p>}
+                   <p className="text-xs text-gray-500 mt-1">Uploading a DOCX will replace the current content in the editor below.</p>
               </div>
-            {/* Removed conditional rendering based on formMode */}
 
-
-           <div>
-             <label htmlFor="templateName" className="block text-sm font-medium text-gray-700 mb-1">
-               Template Name
-             </label>
-             <input
-               type="text"
-               id="templateName"
-               value={formTemplateName} // Use unified state
-               onChange={(e) => {
-                  setFormTemplateName(e.target.value);
-                  // Clear validation error when user types
-                  if (error === 'Template name and content cannot be empty.') {
-                     setError(null);
-                  }
-               }}
-               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-               placeholder="e.g., Welcome Email Q1"
-             />
-           </div>
-           <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                 Template Content
+             <div>
+               <label htmlFor="templateName" className="block text-sm font-medium text-gray-700 mb-1">
+                 Template Name <span className="text-red-500">*</span>
                </label>
-               {/* Removed Edit Content button */}
-               <RichTextEditor
-                 content={editorContent}
-                 onChange={handleEditorChange}
-                 placeholder="Enter your email template HTML here. Use {{column_name}} for placeholders..."
-                 // readOnly prop removed
+               <input
+                 type="text"
+                 id="templateName"
+                 value={formTemplateName}
+                 onChange={(e) => {
+                    setFormTemplateName(e.target.value);
+                    if (error === 'Template name and content cannot be empty.') {
+                       setError(null);
+                    }
+                 }}
+                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                 placeholder="e.g., Welcome Email Q1"
+                 required
                />
-            </div>
-             {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
-            <div className="flex justify-end space-x-3 mt-4"> {/* Added margin-top */}
-              <button
-                onClick={() => setShowForm(false)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
-              >
-                Cancel
-               </button>
-               {/* Save button only for create, removed isEditorReadOnly condition */}
-               <button
-                 onClick={handleSaveTemplate}
-                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                 disabled={isSaving || !formTemplateName || !editorContent}
-               >
-                 {isSaving ? 'Saving...' : 'Save Template'} {/* Text is always Save */}
-               </button>
-           </div>
-        </div>
-      )}
+             </div>
+
+             <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                   Template Content <span className="text-red-500">*</span>
+                 </label>
+                 <RichTextEditor
+                   content={editorContent}
+                   onChange={handleEditorChange}
+                   placeholder="Enter your email template HTML here. Use {{column_name}} for placeholders..."
+                 />
+              </div>
+
+               {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
+
+              <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setShowForm(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                >
+                  Cancel
+                 </button>
+                 <button
+                   type="button"
+                   onClick={handleSaveTemplate}
+                   className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                   disabled={isSaving || !formTemplateName || !editorContent}
+                 >
+                   {isSaving ? 'Saving...' : 'Save Template'}
+                 </button>
+             </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
