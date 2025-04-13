@@ -1,6 +1,9 @@
 'use client';
 
+'use client';
+
 import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation'; // Import useRouter
 import RichTextEditor from './RichTextEditor'; // Import the editor
 
 // Define the structure of a template object (matching API)
@@ -21,19 +24,18 @@ interface Template {
 
 export default function TemplateManager() {
   const [templates, setTemplates] = useState<Template[]>([]);
+  const router = useRouter(); // Get router instance
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false); // Renamed from showCreateForm
-  const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
-  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
-  const [formTemplateName, setFormTemplateName] = useState('');
-  const [editorContent, setEditorContent] = useState('');
+  const [showForm, setShowForm] = useState(false); // Keep for create form visibility
+  // formMode, editingTemplateId, isEditorReadOnly removed as editing is handled on a separate page
+  const [formTemplateName, setFormTemplateName] = useState(''); // Keep for create form
+  const [editorContent, setEditorContent] = useState(''); // Keep for create form
   const [isUploadingDocx, setIsUploadingDocx] = useState(false); // State for DOCX upload
   const [docxError, setDocxError] = useState<string | null>(null); // Specific error for DOCX
   const [isArchiving, setIsArchiving] = useState<string | null>(null); // Track which template is being archived
   const [archiveError, setArchiveError] = useState<string | null>(null); // Specific error for archiving
-  const [isEditorReadOnly, setIsEditorReadOnly] = useState(false); // State for editor read-only mode
 
   // Function to fetch templates
   const fetchTemplates = useCallback(async () => {
@@ -123,29 +125,17 @@ export default function TemplateManager() {
 
    // Function to open the form for creating a new template
    const handleShowCreateForm = () => {
-    setFormMode('create');
-    setEditingTemplateId(null);
+    // No need to set formMode or editingTemplateId
     setFormTemplateName('');
     setEditorContent('');
     setError(null);
     setDocxError(null); // Reset docx error
-    setIsEditorReadOnly(false); // Editor is editable in create mode
     setShowForm(true);
   };
 
-  // Function to open the form for editing an existing template
-  const handleShowEditForm = (template: Template) => {
-    setFormMode('edit');
-    setEditingTemplateId(template.id);
-    setFormTemplateName(template.name);
-    setEditorContent(template.htmlContent);
-    setError(null);
-    setDocxError(null); // Reset docx error
-    setIsEditorReadOnly(true); // Start in read-only mode for editing
-    setShowForm(true);
-  };
+  // handleShowEditForm removed - navigation handles editing now
 
-  // Unified save handler for create and edit
+  // Save handler only for creating new templates
   const handleSaveTemplate = async () => {
     if (!formTemplateName.trim() || !editorContent.trim()) {
       setError('Template name and content cannot be empty.');
@@ -154,13 +144,10 @@ export default function TemplateManager() {
     setIsSaving(true);
     setError(null);
 
+    // Always POST to create a new template
     const url = '/api/templates';
-    const method = formMode === 'create' ? 'POST' : 'PUT';
-    const body = JSON.stringify(
-       formMode === 'create'
-         ? { name: formTemplateName, htmlContent: editorContent }
-         : { id: editingTemplateId, name: formTemplateName, htmlContent: editorContent }
-     );
+    const method = 'POST';
+    const body = JSON.stringify({ name: formTemplateName, htmlContent: editorContent });
 
     try {
       const response = await fetch(url, {
@@ -173,18 +160,17 @@ export default function TemplateManager() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || `Failed to ${formMode} template: ${response.statusText}`);
+        throw new Error(errorData.message || `Failed to create template: ${response.statusText}`);
       }
 
       // Reset form, hide, and refetch
       setFormTemplateName('');
       setEditorContent('');
-      setShowForm(false); // Use unified state
-      setEditingTemplateId(null); // Clear editing ID
+      setShowForm(false);
       await fetchTemplates(); // Refresh the list
 
     } catch (err) {
-       setError(err instanceof Error ? err.message : `An unknown error occurred while ${formMode === 'create' ? 'saving' : 'updating'}`);
+       setError(err instanceof Error ? err.message : `An unknown error occurred while saving`);
        console.error("Save template error:", err);
     } finally {
        setIsSaving(false);
@@ -261,8 +247,9 @@ export default function TemplateManager() {
               <div className="flex gap-2">
                  {/* TODO: Add Select button functionality */}
                  <button className="text-sm text-blue-600 hover:text-blue-800">Select</button>
+                 {/* Navigate to the dedicated edit page */}
                  <button
-                    onClick={() => handleShowEditForm(template)}
+                    onClick={() => router.push(`/templates/${template.id}/edit`)}
                     className="text-sm text-yellow-600 hover:text-yellow-800"
                   >
                     Edit
@@ -291,15 +278,15 @@ export default function TemplateManager() {
          </button>
       ) : (
         <div className="space-y-4 border p-4 rounded-md bg-white">
+           {/* Title is always Create */}
            <h3 className="text-lg font-medium text-gray-600 mb-4">
-             {formMode === 'create' ? 'Create New Template' : 'Edit Template'}
+             Create New Template
            </h3>
 
-            {/* Option to Upload DOCX (only in create mode maybe?) */}
-            {formMode === 'create' && (
-              <div className="mb-4 p-3 border border-dashed rounded-md bg-gray-50">
+            {/* Option to Upload DOCX */}
+            <div className="mb-4 p-3 border border-dashed rounded-md bg-gray-50">
                  <label htmlFor="docxUpload" className="block text-sm font-medium text-gray-700 mb-1">
-                   Or Upload Word Document (.docx)
+                   Or Upload Word Document (.docx) to Prefill Content
                  </label>
                  <input
                    type="file"
@@ -313,7 +300,7 @@ export default function TemplateManager() {
                  {docxError && <p className="text-sm text-red-600 mt-1">{docxError}</p>}
                  <p className="text-xs text-gray-500 mt-1">Uploading a DOCX will replace the current content in the editor below.</p>
               </div>
-            )}
+            {/* Removed conditional rendering based on formMode */}
 
 
            <div>
@@ -339,38 +326,29 @@ export default function TemplateManager() {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                  Template Content
                </label>
-               {/* Conditionally show Edit Content button */}
-               {formMode === 'edit' && isEditorReadOnly && (
-                 <button
-                   type="button"
-                   onClick={() => setIsEditorReadOnly(false)}
-                   className="mb-2 px-3 py-1 bg-yellow-500 text-white text-sm rounded-md hover:bg-yellow-600"
-                 >
-                   Edit Content
-                 </button>
-               )}
+               {/* Removed Edit Content button */}
                <RichTextEditor
                  content={editorContent}
                  onChange={handleEditorChange}
                  placeholder="Enter your email template HTML here. Use {{column_name}} for placeholders..."
-                 readOnly={isEditorReadOnly} // Pass readOnly state
+                 // readOnly prop removed
                />
             </div>
              {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
             <div className="flex justify-end space-x-3 mt-4"> {/* Added margin-top */}
               <button
-                onClick={() => setShowForm(false)} // Use unified state
+                onClick={() => setShowForm(false)}
                 className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
               >
                 Cancel
                </button>
-               {/* Disable save/update if editor is read-only */}
+               {/* Save button only for create, removed isEditorReadOnly condition */}
                <button
-                 onClick={handleSaveTemplate} // Use unified handler
+                 onClick={handleSaveTemplate}
                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                 disabled={isSaving || !formTemplateName || !editorContent || isEditorReadOnly}
+                 disabled={isSaving || !formTemplateName || !editorContent}
                >
-                 {isSaving ? 'Saving...' : (formMode === 'create' ? 'Save Template' : 'Update Template')}
+                 {isSaving ? 'Saving...' : 'Save Template'} {/* Text is always Save */}
                </button>
            </div>
         </div>
