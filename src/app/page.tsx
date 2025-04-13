@@ -1,103 +1,144 @@
-import Image from "next/image";
+'use client'; // Required for useState, useCallback, useEffect
+
+import { useState, useCallback, useEffect } from 'react';
+import Link from 'next/link';
+import CsvUploader from '@/components/CsvUploader';
+import SendForm from '@/components/SendForm';
+import StatusDisplay from '@/components/StatusDisplay';
+
+// Define CsvRow type (consider moving to a shared types file)
+interface CsvRow {
+  email: string;
+  [key: string]: string | number | boolean;
+}
+
+// Define Template type (consider moving to a shared types file)
+interface Template {
+  id: string;
+  name: string;
+  htmlContent: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Define type for campaign creation result message
+interface CampaignResult {
+    type: 'success' | 'error';
+    message: string;
+    campaignId?: string;
+}
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  // State for CSV data
+  const [csvData, setCsvData] = useState<CsvRow[]>([]);
+  const [csvHeaders, setCsvHeaders] = useState<string[]>([]); // Keep headers for potential future use
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  // State for templates fetched for the SendForm dropdown
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
+  const [templateError, setTemplateError] = useState<string | null>(null);
+
+  // State for the result of the *last* campaign creation attempt
+  const [lastCampaignResult, setLastCampaignResult] = useState<CampaignResult | null>(null);
+
+
+  // Callback for CsvUploader
+  const handleDataParsed = useCallback((data: CsvRow[], headers: string[]) => {
+    console.log('CSV Data Parsed:', data.length, 'rows', 'Headers:', headers);
+    setCsvData(data);
+    setCsvHeaders(headers); // Store headers
+    setLastCampaignResult(null); // Clear status when new CSV is parsed
+  }, []);
+
+  // Callback for CsvUploader
+  const handleClearData = useCallback(() => {
+    console.log('Clearing CSV Data');
+    setCsvData([]);
+    setCsvHeaders([]);
+    setLastCampaignResult(null); // Clear status when CSV is cleared
+  }, []);
+
+  // Callbacks for SendForm campaign creation result
+  const handleCampaignCreated = useCallback((campaignId: string, message: string) => {
+      setLastCampaignResult({ type: 'success', message, campaignId });
+      // Clear CSV data after successful campaign creation to prevent accidental resubmission
+      setCsvData([]);
+      setCsvHeaders([]);
+      // Consider clearing SendForm fields as well if needed (requires passing reset function)
+  }, []);
+
+  const handleCampaignError = useCallback((errorMessage: string) => {
+       setLastCampaignResult({ type: 'error', message: errorMessage });
+  }, []);
+
+
+  // Fetch templates when component mounts
+  useEffect(() => {
+    const fetchTemplatesForDropdown = async () => {
+      setIsLoadingTemplates(true);
+      setTemplateError(null);
+      try {
+        const response = await fetch('/api/templates');
+        if (!response.ok) {
+          throw new Error(`Failed to fetch templates: ${response.statusText}`);
+        }
+        const data = await response.json();
+        setTemplates(data);
+      } catch (err) {
+        setTemplateError(err instanceof Error ? err.message : 'An unknown error occurred');
+        console.error("Fetch templates error (Home page):", err);
+      } finally {
+        setIsLoadingTemplates(false);
+      }
+    };
+    fetchTemplatesForDropdown();
+  }, []); // Empty dependency array means run once on mount
+
+
+  return (
+    <main className="flex min-h-screen flex-col items-center p-12 bg-gray-50">
+       <div className="w-full max-w-6xl mb-8 flex justify-between items-center">
+         <h1 className="text-4xl font-bold text-gray-800">CSV Mailer</h1>
+         <div className="flex gap-4">
+            <Link href="/templates" className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">
+                Manage Templates
+            </Link>
+             <Link href="/campaigns" className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">
+                View Campaigns
+            </Link>
+         </div>
+       </div>
+
+      <div className="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 gap-8">
+        {/* Column 1: Upload */}
+        <div className="space-y-8">
+          <section className="bg-white p-6 rounded-lg shadow">
+            <h2 className="text-2xl font-semibold mb-4 text-gray-700">1. Upload CSV</h2>
+            <CsvUploader onDataParsed={handleDataParsed} onClearData={handleClearData} />
+          </section>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+
+        {/* Column 2: Sending Configuration and Status */}
+        <div className="space-y-8">
+          <section className="bg-white p-6 rounded-lg shadow">
+            <h2 className="text-2xl font-semibold mb-4 text-gray-700">3. Configure & Create Campaign</h2>
+            <SendForm
+              templates={templates}
+              isLoadingTemplates={isLoadingTemplates}
+              templateError={templateError}
+              csvData={csvData}
+              onCampaignCreated={handleCampaignCreated} // Pass callback
+              onCampaignError={handleCampaignError}     // Pass callback
+            />
+          </section>
+
+          <section className="bg-white p-6 rounded-lg shadow">
+             <h2 className="text-2xl font-semibold mb-4 text-gray-700">4. Last Action Status</h2>
+             {/* Pass last campaign creation result to StatusDisplay */}
+            <StatusDisplay result={lastCampaignResult} />
+          </section>
+        </div>
+      </div>
+    </main>
   );
 }
