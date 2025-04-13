@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import path from 'path'; // Keep for path validation if needed
 import os from 'os';   // Keep for path validation if needed
+import { NextRequest } from 'next/server'; // Import NextRequest
 import fs from 'fs/promises'; // Keep for path validation if needed
 
 // Interface for the request body to create a campaign
@@ -21,10 +22,24 @@ interface CreateCampaignRequestBody {
   campaignName?: string; // Optional name for the campaign
 }
 
-// GET /api/campaigns - List all campaigns with summary stats
-export async function GET() {
+// GET /api/campaigns - List non-archived campaigns by default, supports limit
+export async function GET(request: NextRequest) {
+    const { searchParams } = new URL(request.url);
+    const includeArchived = searchParams.get('includeArchived') === 'true';
+    const limitParam = searchParams.get('limit');
+    const limit = limitParam ? parseInt(limitParam, 10) : undefined;
+
+    // Validate limit if provided
+    if (limit !== undefined && (isNaN(limit) || limit <= 0)) {
+        return NextResponse.json({ message: 'Invalid limit parameter.' }, { status: 400 });
+    }
+
     try {
         const campaigns = await prisma.campaign.findMany({
+            take: limit, // Add take for limiting results
+            where: {
+                isArchived: includeArchived ? undefined : false, // Filter out archived unless requested
+            },
             orderBy: {
                 createdAt: 'desc', // Show newest first
             },

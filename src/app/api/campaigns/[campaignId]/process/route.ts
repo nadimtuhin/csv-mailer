@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server'; // Import NextRequest
 import prisma from '@/lib/prisma';
 import sgMail from '@sendgrid/mail';
 import fs from 'fs/promises';
@@ -22,10 +22,10 @@ type SendGridAttachment = {
 // POST /api/campaigns/[campaignId]/process - Process recipients for a campaign
 // Accepts optional body: { retryFailed: true } to process failed instead of pending
 export async function POST(
-  request: Request,
-  { params }: { params: { campaignId: string } }
+  request: NextRequest,
+  { params }: { params: { campaignId: string } } // Standard destructuring for params
 ) {
-  const campaignId = params.campaignId;
+  const { campaignId } = params; // Destructure campaignId from params
   let retryFailed = false;
 
   // Check request body for retry flag
@@ -54,17 +54,33 @@ export async function POST(
       return NextResponse.json({ message: 'Campaign not found.' }, { status: 404 });
     }
 
-    if (campaign.status === 'processing' || campaign.status === 'completed') {
-        // Avoid processing if already running or completed (simple lock mechanism)
-        console.log(`Campaign ${campaignId} is already ${campaign.status}. Skipping process request.`);
-        return NextResponse.json({ message: `Campaign already ${campaign.status}.` }, { status: 409 }); // 409 Conflict
+    // Prevent processing only if currently 'processing'
+    // Allow retry even if 'completed'
+    if (campaign.status === 'processing') {
+        console.log(`Campaign ${campaignId} is currently processing. Skipping concurrent request.`);
+        return NextResponse.json({ message: `Campaign is currently processing.` }, { status: 409 }); // 409 Conflict
     }
 
-    // Mark campaign as processing
-    await prisma.campaign.update({
-        where: { id: campaignId },
-        data: { status: 'processing', updatedAt: new Date() },
-    });
+    // If retrying a completed/failed campaign, reset status to processing
+    // Otherwise (initial run), set status to processing
+    const statusUpdate = (retryFailed && (campaign.status === 'completed' || campaign.status === 'failed'))
+      ? 'processing'
+      : campaign.status === 'pending' || campaign.status === 'queued'
+      ? 'processing'
+      : campaign.status; // Keep current status if it's unexpected
+
+    if (statusUpdate === 'processing') {
+        await prisma.campaign.update({
+            where: { id: campaignId },
+            data: { status: 'processing', updatedAt: new Date() },
+        });
+    } else if (!retryFailed) {
+        // If not retrying and status isn't suitable for processing, maybe return an error?
+        // For now, let it proceed but this might need refinement.
+         console.warn(`Campaign ${campaignId} has status ${campaign.status}, proceeding with initial processing request.`);
+         // Optionally, force status to processing here too if needed:
+         // await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'processing', updatedAt: new Date() } });
+    }
 
     // 2. Fetch Template HTML (if stored by ID) - Assuming HTML is passed for now
     // For simplicity, we assume templateHtml is stored directly or passed correctly.
@@ -104,22 +120,29 @@ export async function POST(
                  where: { campaignId: campaignId, status: { in: ['pending', 'failed'] } }
              });
              if (remainingCount === 0) {
+                 // Only mark completed if no pending/failed remain
                  await prisma.campaign.update({
                      where: { id: campaignId },
                      data: { status: 'completed', updatedAt: new Date() },
                  });
-                 console.log(`Campaign ${campaignId} marked as completed.`);
-                 // Clean up temp PDF *after* completion
+                 console.log(`Campaign ${campaignId} marked as completed (no pending/failed remain).`);
+                 // Clean up temp PDF *after* final completion
                  if (campaign?.pdfTemplatePath) {
                      try { await fs.unlink(campaign.pdfTemplatePath); console.log(`Cleaned up PDF: ${campaign.pdfTemplatePath}`); }
                      catch (e: unknown) { if (typeof e === 'object' && e !== null && 'code' in e && (e as {code:string}).code !== 'ENOENT') console.error(`Failed PDF cleanup: ${campaign.pdfTemplatePath}`, e); }
                  }
              } else {
-                 // If some failed ones remain, don't mark completed yet
-                 await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'queued' } }); // Revert to queued? Or keep processing? Depends on desired flow. Let's keep processing for now.
+                 // If some failed ones remain after a retry, mark as 'failed' or keep 'completed'? Let's mark as 'failed' to indicate action might still be needed.
+                 // If some failed ones remain after initial run, mark as 'failed'.
+                 const finalStatusOnFailures = 'failed'; // Or 'completed_with_errors'
+                 await prisma.campaign.update({ where: { id: campaignId }, data: { status: finalStatusOnFailures, updatedAt: new Date() } });
+                 console.log(`Campaign ${campaignId} finished with ${remainingCount} pending/failed recipients. Status set to ${finalStatusOnFailures}.`);
              }
+        } else if (retryFailed) {
+             // If retrying and no failed recipients were found, the message is sufficient.
+             // Status should remain as it was (likely 'completed' or 'failed').
         }
-        return NextResponse.json({ message: message });
+        return NextResponse.json({ message: message }); // Return the "No recipients found" message
     }
 
     console.log(`Processing ${recipientsToProcess.length} recipients for campaign ${campaignId}...`);
@@ -221,22 +244,30 @@ export async function POST(
 
     // Check if campaign is complete after this batch
     const totalProcessed = updatedCampaign.sentCount + updatedCampaign.failedCount + updatedCampaign.skippedCount;
-     if (totalProcessed >= updatedCampaign.totalRecipients) {
-         await prisma.campaign.update({
-             where: { id: campaignId },
-             data: { status: 'completed', updatedAt: new Date() },
-         });
-         console.log(`Campaign ${campaignId} marked as completed.`);
-         // Cleanup handled here now
-     } else {
-         // Still more recipients (pending or failed), keep status as 'processing'
-         await prisma.campaign.update({
-             where: { id: campaignId },
-             data: { status: 'processing' }, // Ensure it stays processing
-         });
-         console.log(`Campaign ${campaignId} batch processed. ${updatedCampaign.totalRecipients - totalProcessed} remaining.`);
-         // TODO: Trigger next batch processing if running sequentially
-     }
+    // Check if campaign is complete after this batch
+    const finalRemainingCount = await prisma.campaignRecipient.count({
+        where: { campaignId: campaignId, status: { in: ['pending', 'failed'] } }
+    });
+
+    let finalCampaignStatus: string;
+    if (finalRemainingCount === 0) {
+        finalCampaignStatus = 'completed';
+        console.log(`Campaign ${campaignId} marked as completed (no pending/failed remain after batch).`);
+        // Clean up temp PDF *after* final completion
+        if (campaign?.pdfTemplatePath) {
+            try { await fs.unlink(campaign.pdfTemplatePath); console.log(`Cleaned up PDF: ${campaign.pdfTemplatePath}`); }
+            catch (e: unknown) { if (typeof e === 'object' && e !== null && 'code' in e && (e as {code:string}).code !== 'ENOENT') console.error(`Failed PDF cleanup: ${campaign.pdfTemplatePath}`, e); }
+        }
+    } else {
+        // If still pending/failed, mark as 'failed' (or keep 'processing' if implementing sequential batches)
+        finalCampaignStatus = 'failed'; // Indicates incomplete run or errors remain
+        console.log(`Campaign ${campaignId} finished batch with ${finalRemainingCount} pending/failed recipients. Status set to ${finalCampaignStatus}.`);
+    }
+
+    await prisma.campaign.update({
+        where: { id: campaignId },
+        data: { status: finalCampaignStatus, updatedAt: new Date() },
+    });
 
 
     return NextResponse.json({

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react'; // Import useCallback
 import Link from 'next/link';
 import { format } from 'date-fns'; // For formatting dates
 
@@ -21,12 +21,16 @@ export default function CampaignsListPage() {
   const [campaigns, setCampaigns] = useState<CampaignSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isArchiving, setIsArchiving] = useState<string | null>(null); // State for archiving status
+  const [archiveError, setArchiveError] = useState<string | null>(null); // State for archiving error
+  const [isProcessing, setIsProcessing] = useState<string | null>(null); // Track processing/retry status
+  const [processError, setProcessError] = useState<string | null>(null); // Track processing/retry error
 
-  // Fetch campaigns on mount
-  useEffect(() => {
-    const fetchCampaigns = async () => {
-      setIsLoading(true);
-      setError(null);
+  // Define fetchCampaigns using useCallback
+  const fetchCampaigns = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    setArchiveError(null); // Clear archive error on fetch
       try {
         const response = await fetch('/api/campaigns');
         if (!response.ok) {
@@ -40,47 +44,94 @@ export default function CampaignsListPage() {
         console.error("Fetch campaigns error:", err);
       } finally {
         setIsLoading(false);
-      }
-    };
-    fetchCampaigns();
-  }, []);
+    }
+  }, []); // Empty dependency array as it doesn't depend on props/state
 
-  // Function to manually trigger processing (for development/testing)
-  const triggerProcessing = async (campaignId: string) => {
-      // TODO: Add loading state per row or globally
-      console.log(`Triggering processing for campaign ${campaignId}...`);
+  // Fetch campaigns on mount
+  useEffect(() => {
+    fetchCampaigns();
+  }, [fetchCampaigns]); // Add fetchCampaigns to dependency array
+
+  // Function to archive a campaign
+  const handleArchiveCampaign = async (campaignId: string) => {
+    if (!window.confirm('Are you sure you want to archive this campaign?')) {
+      return;
+    }
+    setIsArchiving(campaignId);
+    setArchiveError(null);
+    setError(null); // Clear general errors
+
+    try {
+      const response = await fetch(`/api/campaigns/${campaignId}`, {
+        method: 'PATCH',
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to archive campaign');
+      }
+      // Refresh the list to remove the archived campaign
+      await fetchCampaigns(); // Re-use the fetch function
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'An unknown error occurred during archiving.';
+      setArchiveError(message);
+      console.error("Archive campaign error:", err);
+    } finally {
+      setIsArchiving(null);
+    }
+  };
+
+  // Function to trigger processing (initial run or retry)
+  const triggerProcessing = async (campaignId: string, retry: boolean = false) => {
+      setIsProcessing(campaignId); // Set loading state for this campaign
+      setProcessError(null); // Clear previous errors
+      setError(null); // Clear general errors
+      console.log(`${retry ? 'Retrying failed for' : 'Triggering processing for'} campaign ${campaignId}...`);
+
       try {
-          const response = await fetch(`/api/campaigns/${campaignId}/process`, { method: 'POST' });
+          const response = await fetch(`/api/campaigns/${campaignId}/process`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ retryFailed: retry }), // Send retry flag
+          });
           const result = await response.json();
           if (!response.ok) {
-              throw new Error(result.message || 'Failed to trigger processing');
+              throw new Error(result.message || `Failed to ${retry ? 'retry' : 'trigger'} processing`);
           }
-          alert(`Processing triggered for ${campaignId}: ${result.message}`);
-          // Optionally refresh the list or update status locally
+          alert(`Processing ${retry ? 'retry ' : ''}triggered for ${campaignId}: ${result.message}`);
+          // Refresh the list to show updated status
+          await fetchCampaigns();
       } catch (err) {
-          alert(`Error triggering processing: ${err instanceof Error ? err.message : 'Unknown error'}`);
-          console.error("Trigger processing error:", err);
+          const message = `Error ${retry ? 'retrying' : 'triggering'} processing: ${err instanceof Error ? err.message : 'Unknown error'}`;
+          setProcessError(message); // Set specific process error
+          alert(message); // Also show alert for immediate feedback
+          console.error("Trigger processing/retry error:", err);
+      } finally {
+          setIsProcessing(null); // Clear loading state
       }
   };
 
 
   return (
-    <main className="flex min-h-screen flex-col items-center p-12 bg-gray-50">
+    <main className="flex flex-col items-center p-6 md:p-12 bg-gray-50 min-h-screen"> {/* Adjusted padding */}
       <div className="w-full max-w-6xl">
         <div className="mb-8 flex justify-between items-center">
-          <h1 className="text-3xl font-bold text-gray-800">Campaigns</h1>
+          <h1 className="text-3xl font-bold text-gray-800">Active Campaigns</h1> {/* Updated title */}
+          {/* TODO: Add toggle/link to view archived campaigns */}
           <Link href="/" className="text-blue-600 hover:text-blue-800 hover:underline">
-            &larr; Back to Mailer
+            &larr; Back to Home
           </Link>
         </div>
 
         {isLoading && <p>Loading campaigns...</p>}
-        {error && <p className="text-red-600">Error loading campaigns: {error}</p>}
+        {/* Display general, archive, or processing errors */}
+        {error && !archiveError && !processError && <p className="text-red-600">Error loading campaigns: {error}</p>}
+        {archiveError && <p className="text-red-600">Error archiving campaign: {archiveError}</p>}
+        {processError && <p className="text-red-600">{processError}</p>}
 
-        {!isLoading && !error && (
+        {!isLoading && !error && !archiveError && !processError && (
           <div className="bg-white p-6 rounded-lg shadow overflow-x-auto">
             {campaigns.length === 0 ? (
-              <p>No campaigns found.</p>
+              <p>No active campaigns found.</p>
             ) : (
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
@@ -119,12 +170,34 @@ export default function CampaignsListPage() {
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{format(new Date(campaign.createdAt), 'PPpp')}</td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm font-medium space-x-2">
                           <Link href={`/campaigns/${campaign.id}`} className="text-indigo-600 hover:text-indigo-900">Details</Link>
-                          {/* Add manual trigger button */}
-                          {(campaign.status === 'queued' || campaign.status === 'pending') && (
-                              <button onClick={() => triggerProcessing(campaign.id)} className="text-green-600 hover:text-green-900">Process</button>
-                          )}
-                           {/* TODO: Add Retry button */}
-                           {/* {campaign.failedCount > 0 && campaign.status !== 'processing' && ( ... )} */}
+                           {/* Process Button (Initial Run) */}
+                           {(campaign.status === 'queued' || campaign.status === 'pending') && (
+                               <button
+                                 onClick={() => triggerProcessing(campaign.id, false)}
+                                 className="text-green-600 hover:text-green-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                                 disabled={isProcessing === campaign.id}
+                               >
+                                 {isProcessing === campaign.id ? 'Processing...' : 'Process'}
+                               </button>
+                           )}
+                           {/* Retry Failed Button */}
+                           {campaign.failedCount > 0 && campaign.status !== 'processing' && (
+                              <button
+                                onClick={() => triggerProcessing(campaign.id, true)}
+                                className="text-blue-600 hover:text-blue-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled={isProcessing === campaign.id}
+                              >
+                                {isProcessing === campaign.id ? 'Retrying...' : 'Retry Failed'}
+                              </button>
+                           )}
+                           {/* Archive button */}
+                           <button
+                             onClick={() => handleArchiveCampaign(campaign.id)}
+                             className="text-orange-600 hover:text-orange-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                             disabled={isArchiving === campaign.id}
+                           >
+                             {isArchiving === campaign.id ? 'Archiving...' : 'Archive'}
+                           </button>
                         </td>
                       </tr>
                     );
