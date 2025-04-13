@@ -15,6 +15,7 @@ interface CampaignSummary {
   skippedCount: number;
   createdAt: string;
   updatedAt: string;
+  scheduledAt?: string | null; // Add optional scheduledAt
 }
 
 export default function CampaignsListPageClient() {
@@ -156,11 +157,15 @@ export default function CampaignsListPageClient() {
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
                                campaign.status === 'completed' ? 'bg-green-100 text-green-800' :
+                               campaign.status === 'completed' ? 'bg-green-100 text-green-800' :
                                campaign.status === 'failed' ? 'bg-red-100 text-red-800' :
                                campaign.status === 'processing' ? 'bg-yellow-100 text-yellow-800' :
+                               campaign.status === 'scheduled' ? 'bg-blue-100 text-blue-800' : // Style for scheduled
                                'bg-gray-100 text-gray-800' // pending, queued
                            }`}>
-                             {campaign.status}
+                             {campaign.status === 'scheduled' && campaign.scheduledAt
+                               ? `Scheduled (${format(new Date(campaign.scheduledAt), 'Pp')})`
+                               : campaign.status}
                             </span>
                          </td>
                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
@@ -182,15 +187,17 @@ export default function CampaignsListPageClient() {
                             Details
                           </Link>
                            {/* Process Button (Initial Run) */}
+                           {/* Process Button (Only show for 'queued' or 'pending', hide for 'scheduled') */}
                            {(campaign.status === 'queued' || campaign.status === 'pending') && (
                                <button
                                  onClick={() => triggerProcessing(campaign.id, false)}
                                  className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
                                  disabled={isProcessing === campaign.id}
                                >
-                                 {isProcessing === campaign.id ? 'Processing...' : 'Process'}
+                                 {isProcessing === campaign.id ? 'Processing...' : 'Process Now'}
                                </button>
                            )}
+                           {/* Note: Scheduled campaigns are processed automatically by the backend trigger/cron job */}
                            {/* Retry Failed Button */}
                            {campaign.failedCount > 0 && campaign.status !== 'processing' && (
                               <button
