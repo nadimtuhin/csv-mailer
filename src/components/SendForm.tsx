@@ -1,19 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react'; // Add useEffect
+import React, { useState, useEffect, useMemo } from 'react';
+import { mergeDataIntoTemplate } from '@/utils/templateHelper';
+import { CsvRow, Template } from '@/types'; // Import shared types
 
-// Define needed types (or import from shared location)
-interface CsvRow {
-  email: string;
-  [key: string]: string | number | boolean;
-}
-interface Template {
-  id: string;
-  name: string;
-  htmlContent: string; // Keep this, needed for sending
-  createdAt: string;
-  updatedAt: string;
-}
+// Local definitions removed
 
 interface SendFormProps {
   templates: Template[];
@@ -46,6 +37,8 @@ export default function SendForm({
   const [pdfError, setPdfError] = useState<string | null>(null); // PDF specific error
   const [isSending, setIsSending] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(false); // State for preview modal
+  const [previewIndex, setPreviewIndex] = useState(0); // State for current preview recipient index
 
   // Reset selected template/PDF if lists/data change
   useEffect(() => {
@@ -198,6 +191,22 @@ export default function SendForm({
     // --- End API Call ---
   };
 
+  // Calculate preview content using the imported helper
+  const previewContent = useMemo(() => {
+    if (!showPreview || !selectedTemplateId || csvData.length === 0 || previewIndex >= csvData.length) {
+      return { html: '', recipient: null };
+    }
+    const template = templates.find(t => t.id === selectedTemplateId);
+    const recipient = csvData[previewIndex]; // Get current recipient based on index
+    if (!template || !recipient) {
+      return { html: '<p>Error generating preview (template or recipient not found).</p>', recipient: null };
+    }
+    // Use the utility function for merging
+    const mergedHtml = mergeDataIntoTemplate(template.htmlContent, recipient);
+    return { html: mergedHtml, recipient };
+  }, [showPreview, selectedTemplateId, csvData, previewIndex, templates]);
+
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
@@ -343,9 +352,76 @@ export default function SendForm({
       >
         {isSending ? 'Creating Campaign...' : 'Create & Queue Campaign'}
       </button>
+
+       {/* Preview Button */}
+       <button
+         type="button"
+         onClick={() => { setPreviewIndex(0); setShowPreview(true); }} // Reset index on open
+         disabled={!csvData.length || !selectedTemplateId || isSending || isUploadingPdf}
+         className="w-full mt-2 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 disabled:opacity-50"
+       >
+         Preview Email ({csvData.length > 0 ? `Recipient ${previewIndex + 1}` : 'N/A'} / {csvData.length})
+       </button>
+
        <p className="text-xs text-gray-500">
         This will create a campaign record and queue emails for background sending. Monitor progress on the Campaigns page.
       </p>
+
+       {/* Preview Modal/Section */}
+       {showPreview && (
+         // Using fixed positioning for a simple modal overlay
+         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4" onClick={() => setShowPreview(false)}>
+           {/* Stop propagation prevents clicks inside modal from closing it */}
+           <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+             {/* Header */}
+             <div className="flex justify-between items-center p-3 border-b bg-gray-50 rounded-t-lg">
+                <h3 className="text-lg font-semibold text-gray-700">Email Preview</h3>
+                <button onClick={() => setShowPreview(false)} className="text-gray-400 hover:text-gray-700 text-2xl font-bold">&times;</button>
+             </div>
+
+             {/* Content */}
+             <div className="flex-grow p-4 overflow-y-auto">
+                {/* Preview Navigation & Info */}
+                <div className="flex justify-between items-center mb-3 bg-gray-100 p-2 rounded sticky top-0 z-10">
+                   <button
+                      onClick={() => setPreviewIndex(prev => Math.max(0, prev - 1))}
+                      disabled={previewIndex === 0}
+                      className="px-3 py-1 bg-gray-300 rounded disabled:opacity-50 hover:bg-gray-400"
+                   >&larr; Prev</button>
+                   <div className="text-sm text-center">
+                      Recipient {previewIndex + 1} / {csvData.length} <br/>
+                      <span className="font-medium">{previewContent.recipient?.email || 'N/A'}</span>
+                   </div>
+                   <button
+                      onClick={() => setPreviewIndex(prev => Math.min(csvData.length - 1, prev + 1))}
+                      disabled={previewIndex >= csvData.length - 1}
+                      className="px-3 py-1 bg-gray-300 rounded disabled:opacity-50 hover:bg-gray-400"
+                   >Next &rarr;</button>
+                </div>
+
+                {/* Email Details */}
+                <div className="text-sm space-y-1 mb-4 border-b pb-3">
+                    <p><strong>To:</strong> {previewContent.recipient?.email || 'N/A'}</p>
+                    <p><strong>From:</strong> {fromName ? `${fromName} <${fromEmail}>` : fromEmail}</p>
+                    <p><strong>Reply-To:</strong> {replyToEmail}</p>
+                    <p><strong>Subject:</strong> {subject}</p>
+                    {pdfFileName && <p><strong>Attachment:</strong> {pdfFileName} (Preview not available, content will be merged per recipient)</p>}
+                </div>
+
+                {/* Rendered HTML Preview */}
+                <div
+                    className="prose prose-sm max-w-none" // Use prose for basic styling
+                    dangerouslySetInnerHTML={{ __html: previewContent.html }}
+                />
+             </div>
+
+             {/* Footer (Optional) */}
+             <div className="p-3 border-t bg-gray-50 rounded-b-lg text-right">
+                 <button onClick={() => setShowPreview(false)} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">Close</button>
+             </div>
+           </div>
+         </div>
+       )}
     </form>
   );
 }
