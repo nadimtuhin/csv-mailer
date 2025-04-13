@@ -49,3 +49,17 @@ dummy_recipients.csv
 dev.db
 dev.db-journal
 dev.db-*
+
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+.env.development
+.env.test
+.env.production
+.env.production.local
+.env.test.local
+.env.development.local
+.env.local
+.env
