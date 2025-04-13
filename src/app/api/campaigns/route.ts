@@ -20,6 +20,7 @@ interface CreateCampaignRequestBody {
   replyToEmail: string;
   pdfTemplatePath?: string | null; // Path to the temporary PDF template
   campaignName?: string; // Optional name for the campaign
+  scheduledAt?: string | null; // Optional ISO string for scheduling
 }
 
 // GET /api/campaigns - List non-archived campaigns by default, supports limit
@@ -53,6 +54,7 @@ export async function GET(request: NextRequest) {
                 skippedCount: true,
                 createdAt: true,
                 updatedAt: true,
+                scheduledAt: true, // Add scheduledAt to the selection
             }
         });
         return NextResponse.json(campaigns);
@@ -79,6 +81,7 @@ export async function POST(request: Request) {
       replyToEmail,
       pdfTemplatePath,
       campaignName,
+      scheduledAt: scheduledAtString, // Rename to avoid conflict with Date object
     } = body;
 
     // --- Basic Validation ---
@@ -96,7 +99,24 @@ export async function POST(request: Request) {
          // This check assumes templateHtml is passed directly for now. Adjust if fetching by ID.
          return NextResponse.json({ message: 'Missing template information (templateId or templateHtml).' }, { status: 400 });
      }
-    // --- End Validation ---
+
+    // --- Schedule Validation ---
+    let scheduledAt: Date | null = null;
+    if (scheduledAtString) {
+        try {
+            scheduledAt = new Date(scheduledAtString);
+            if (isNaN(scheduledAt.getTime())) {
+                throw new Error('Invalid date format.');
+            }
+            if (scheduledAt <= new Date()) {
+                throw new Error('Scheduled time must be in the future.');
+            }
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Invalid scheduled time provided.';
+            return NextResponse.json({ message }, { status: 400 });
+        }
+    }
+    // --- End Schedule Validation ---
 
     // --- PDF Path Validation (copied from previous step) ---
     // validatedPdfPath is declared outside, assign here
@@ -118,10 +138,11 @@ export async function POST(request: Request) {
 
 
     // --- Create Campaign in Database ---
+    const initialStatus = scheduledAt ? 'scheduled' : 'pending'; // Set initial status based on scheduling
     const campaign = await prisma.campaign.create({
       data: {
         name: campaignName || `Campaign ${new Date().toISOString()}`, // Default name
-        status: 'pending', // Initial status
+        status: initialStatus, // Use determined initial status
         totalRecipients: recipients.length,
         subject: subject,
         fromEmail: fromEmail,
@@ -129,6 +150,7 @@ export async function POST(request: Request) {
         replyToEmail: replyToEmail,
         templateId: templateId, // Store template ID if available
         pdfTemplatePath: validatedPdfPath, // Store validated path
+        scheduledAt: scheduledAt, // Store the Date object or null
         // Store template HTML directly on campaign if not using templateId relation rigorously
         // templateHtml: templateHtml, // Uncomment if storing HTML on campaign model
       },
@@ -169,10 +191,12 @@ export async function POST(request: Request) {
 
     // Update campaign counts based on actual created recipients vs original total
     const skippedCount = recipients.length - createManyResult.count;
+    // Determine final status after recipient creation
+    const finalStatus = scheduledAt ? 'scheduled' : 'queued';
     await prisma.campaign.update({
         where: { id: campaign.id },
         data: {
-            status: 'queued', // Update status to indicate recipients are ready for processing
+            status: finalStatus, // Update status based on scheduling
             skippedCount: skippedCount,
             totalRecipients: recipients.length, // Keep total as original count
         },
@@ -188,10 +212,14 @@ export async function POST(request: Request) {
 
 
     // Return the newly created campaign ID and initial status
+    const successMessage = scheduledAt
+        ? `Campaign scheduled successfully for ${scheduledAt.toLocaleString()} with ID: ${campaign.id}. ${createManyResult.count} recipients queued, ${skippedCount} skipped.`
+        : `Campaign created successfully with ID: ${campaign.id}. ${createManyResult.count} recipients queued, ${skippedCount} skipped.`;
+
     return NextResponse.json({
-        message: `Campaign created successfully with ID: ${campaign.id}. ${createManyResult.count} recipients queued, ${skippedCount} skipped.`,
+        message: successMessage,
         campaignId: campaign.id,
-        status: 'queued'
+        status: finalStatus // Return the final status
     }, { status: 201 }); // 201 Created
 
   } catch (error: unknown) {

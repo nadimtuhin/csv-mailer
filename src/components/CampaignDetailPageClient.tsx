@@ -84,7 +84,9 @@ export default function CampaignDetailPageClient({ campaignId }: CampaignDetailP
          status === 'sent' ? 'bg-green-100 text-green-800' :
          status === 'failed' ? 'bg-red-100 text-red-800' :
          status === 'skipped' ? 'bg-yellow-100 text-yellow-800' :
-         'bg-gray-100 text-gray-800' // pending
+         status === 'processing' ? 'bg-yellow-100 text-yellow-800' : // Added processing style
+         status === 'scheduled' ? 'bg-blue-100 text-blue-800' : // Added scheduled style
+         'bg-gray-100 text-gray-800' // pending, queued
      }`}>
        {status}
      </span>
@@ -112,12 +114,17 @@ export default function CampaignDetailPageClient({ campaignId }: CampaignDetailP
 
         {/* Campaign Summary Section */}
         <section className="bg-white p-6 rounded-lg shadow mb-8">
-           <h2 className="text-xl font-semibold mb-4 text-gray-700">Summary</h2>
-           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-              <div><strong>Status:</strong> <StatusBadge status={campaign.status} /></div>
-              <div><strong>Created:</strong> {format(new Date(campaign.createdAt), 'PPpp')}</div>
-              <div><strong>Subject:</strong> {campaign.subject}</div>
-              <div><strong>From:</strong> {campaign.fromName ? `${campaign.fromName} <${campaign.fromEmail}>` : campaign.fromEmail}</div>
+            <h2 className="text-xl font-semibold mb-4 text-gray-700">Summary</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+               <div><strong>Status:</strong> <StatusBadge status={campaign.status} /></div>
+               {/* Display Scheduled At if applicable */}
+               {campaign.status === 'scheduled' && campaign.scheduledAt ? (
+                   <div><strong>Scheduled At:</strong> {format(new Date(campaign.scheduledAt), 'PPpp')}</div>
+               ) : (
+                   <div><strong>Created:</strong> {format(new Date(campaign.createdAt), 'PPpp')}</div>
+               )}
+               <div><strong>Subject:</strong> {campaign.subject}</div>
+               <div><strong>From:</strong> {campaign.fromName ? `${campaign.fromName} <${campaign.fromEmail}>` : campaign.fromEmail}</div>
               <div><strong>Reply-To:</strong> {campaign.replyToEmail}</div>
               {campaign.pdfTemplatePath && <div><strong>PDF Template:</strong> Attached</div>}
               {/* Progress Bar */}

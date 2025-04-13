@@ -45,42 +45,80 @@ export async function POST(
 
   let campaign: Campaign | null = null; // Explicitly type campaign
   try {
-    // 1. Fetch Campaign Details (including config)
+    // 1. Fetch Campaign Details (including config and schedule)
     campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
+      // Include scheduledAt explicitly if not default selected
+      // select: { ..., scheduledAt: true } // Not needed unless specific select is used
     });
 
     if (!campaign) {
       return NextResponse.json({ message: 'Campaign not found.' }, { status: 404 });
     }
 
-    // Prevent processing only if currently 'processing'
-    // Allow retry even if 'completed'
-    if (campaign.status === 'processing') {
-        console.log(`Campaign ${campaignId} is currently processing. Skipping concurrent request.`);
-        return NextResponse.json({ message: `Campaign is currently processing.` }, { status: 409 }); // 409 Conflict
+    // --- Status and Schedule Check ---
+    const now = new Date();
+    let canProcess = false;
+    let statusToProcess: 'pending' | 'failed' = 'pending'; // Default for initial run
+
+    if (retryFailed) {
+        if (campaign.status === 'failed' || campaign.status === 'completed') {
+            console.log(`Retrying failed recipients for campaign ${campaignId}.`);
+            canProcess = true;
+            statusToProcess = 'failed';
+        } else if (campaign.status === 'processing') {
+             console.log(`Campaign ${campaignId} is currently processing. Skipping retry request.`);
+             return NextResponse.json({ message: `Campaign is currently processing.` }, { status: 409 });
+        } else {
+            console.log(`Campaign ${campaignId} status is ${campaign.status}. Cannot retry.`);
+            return NextResponse.json({ message: `Campaign status (${campaign.status}) does not allow retrying failed recipients.` }, { status: 400 });
+        }
+    } else { // Not retrying failed
+        if (campaign.status === 'scheduled') {
+            if (!campaign.scheduledAt) {
+                 console.error(`Campaign ${campaignId} has status 'scheduled' but no scheduledAt time. Failing.`);
+                 await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'failed' } });
+                 return NextResponse.json({ message: 'Campaign is scheduled but missing schedule time.' }, { status: 500 });
+            } else if (campaign.scheduledAt > now) {
+                 console.log(`Campaign ${campaignId} is scheduled for ${campaign.scheduledAt}. Not processing yet.`);
+                 return NextResponse.json({ message: `Campaign is scheduled for the future (${campaign.scheduledAt.toISOString()}).` }, { status: 202 }); // 202 Accepted (will process later)
+            } else {
+                 console.log(`Campaign ${campaignId} was scheduled for ${campaign.scheduledAt}. Processing now.`);
+                 canProcess = true;
+                 statusToProcess = 'pending'; // Process pending recipients for a scheduled campaign
+            }
+        } else if (campaign.status === 'queued') {
+             console.log(`Campaign ${campaignId} is queued. Processing now.`);
+             canProcess = true;
+             statusToProcess = 'pending';
+        } else if (campaign.status === 'processing') {
+             console.log(`Campaign ${campaignId} is already processing. Skipping concurrent request.`);
+             return NextResponse.json({ message: `Campaign is currently processing.` }, { status: 409 }); // 409 Conflict
+        } else if (campaign.status === 'completed') {
+             console.log(`Campaign ${campaignId} is already completed.`);
+             return NextResponse.json({ message: `Campaign is already completed.` }, { status: 400 });
+        } else if (campaign.status === 'failed') {
+             console.log(`Campaign ${campaignId} has failed. Use retry option to process failed recipients.`);
+             return NextResponse.json({ message: `Campaign has failed. Use retry option.` }, { status: 400 });
+        } else { // Includes 'pending' or any unexpected status
+             console.warn(`Campaign ${campaignId} has unexpected status ${campaign.status}. Attempting to process as 'queued'.`);
+             canProcess = true;
+             statusToProcess = 'pending';
+        }
     }
 
-    // If retrying a completed/failed campaign, reset status to processing
-    // Otherwise (initial run), set status to processing
-    const statusUpdate = (retryFailed && (campaign.status === 'completed' || campaign.status === 'failed'))
-      ? 'processing'
-      : campaign.status === 'pending' || campaign.status === 'queued'
-      ? 'processing'
-      : campaign.status; // Keep current status if it's unexpected
-
-    if (statusUpdate === 'processing') {
-        await prisma.campaign.update({
-            where: { id: campaignId },
-            data: { status: 'processing', updatedAt: new Date() },
-        });
-    } else if (!retryFailed) {
-        // If not retrying and status isn't suitable for processing, maybe return an error?
-        // For now, let it proceed but this might need refinement.
-         console.warn(`Campaign ${campaignId} has status ${campaign.status}, proceeding with initial processing request.`);
-         // Optionally, force status to processing here too if needed:
-         // await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'processing', updatedAt: new Date() } });
+    if (!canProcess) {
+        // This should technically be caught by the specific checks above, but as a safeguard:
+        console.error(`Campaign ${campaignId} cannot be processed with status ${campaign.status} and retry=${retryFailed}.`);
+        return NextResponse.json({ message: 'Campaign cannot be processed in its current state.' }, { status: 400 });
     }
+
+    // Update status to 'processing' *before* fetching recipients
+    await prisma.campaign.update({
+        where: { id: campaignId },
+        data: { status: 'processing', updatedAt: now }, // Use current time
+    });
+    // --- End Status and Schedule Check ---
 
     // 2. Fetch Template HTML (if stored by ID) - Assuming HTML is passed for now
     // For simplicity, we assume templateHtml is stored directly or passed correctly.
@@ -100,8 +138,7 @@ export async function POST(
     }
 
 
-    // 3. Fetch Recipients to Process (Pending or Failed based on retry flag)
-    const statusToProcess = retryFailed ? 'failed' : 'pending';
+    // 3. Fetch Recipients to Process (Status determined by checks above)
     const recipientsToProcess = await prisma.campaignRecipient.findMany({
       where: {
         campaignId: campaignId,

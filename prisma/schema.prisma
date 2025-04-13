@@ -42,6 +42,7 @@ model Campaign {
   templateId     String?             // Link to the Template used (optional if storing HTML directly)
   // template     Template? @relation(fields: [templateId], references: [id]) // Optional relation
   pdfTemplatePath String?            // Store path if PDF was used (for potential retry info)
+  scheduledAt    DateTime?           // Optional time for scheduled dispatch
   isArchived     Boolean             @default(false) // Added for archiving
 
   recipients     CampaignRecipient[] // Relation to individual recipients

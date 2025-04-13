@@ -39,6 +39,7 @@ export default function SendForm({
   const [formError, setFormError] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false); // State for preview modal
   const [previewIndex, setPreviewIndex] = useState(0); // State for current preview recipient index
+  const [scheduledAt, setScheduledAt] = useState<string>(''); // State for scheduled time
 
   // Reset selected template/PDF if lists/data change
   useEffect(() => {
@@ -143,15 +144,25 @@ export default function SendForm({
     // --- End Validation ---
 
 
-    console.log('Creating Campaign with Data:', {
-      campaignName,
-      subject,
+       // Convert scheduledAt string to Date object or null if empty
+       const scheduleDate = scheduledAt ? new Date(scheduledAt) : null;
+       // Basic validation: ensure schedule date is in the future if set
+       if (scheduleDate && scheduleDate < new Date()) {
+           setFormError('Scheduled time must be in the future.');
+           setIsSending(false);
+           return;
+       }
+
+       console.log('Creating Campaign with Data:', {
+         campaignName,
+         subject,
       fromEmail,
       fromName,
-      replyToEmail,
-      selectedTemplateId: selectedTemplate.id,
-      recipientsCount: csvData.length,
-    });
+         replyToEmail,
+         selectedTemplateId: selectedTemplate.id,
+         recipientsCount: csvData.length,
+         scheduledAt: scheduleDate, // Log the date object or null
+       });
 
     // alert('Sending logic not yet implemented.'); // Remove alert
 
@@ -170,10 +181,11 @@ export default function SendForm({
            fromEmail,
            fromName,
            replyToEmail,
-           pdfTemplatePath: pdfTemplatePath,
-           campaignName: campaignName || undefined, // Pass optional name
-         }),
-       });
+            pdfTemplatePath: pdfTemplatePath,
+            campaignName: campaignName || undefined, // Pass optional name
+            scheduledAt: scheduleDate ? scheduleDate.toISOString() : null, // Send ISO string or null
+          }),
+        });
 
        const result = await response.json();
 
@@ -246,9 +258,26 @@ export default function SendForm({
          />
        </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-         <div>
-           <label htmlFor="fromEmail" className="block text-sm font-medium text-gray-700">
+       {/* Scheduling Section */}
+       <div>
+         <label htmlFor="scheduledAt" className="block text-sm font-medium text-gray-700">
+           Schedule Dispatch (Optional)
+         </label>
+         <input
+           type="datetime-local"
+           id="scheduledAt"
+           value={scheduledAt}
+           onChange={(e) => setScheduledAt(e.target.value)}
+           className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+           // Set min to current time to prevent past dates (browser support varies)
+           min={new Date().toISOString().slice(0, 16)}
+         />
+         <p className="text-xs text-gray-500 mt-1">Leave blank to send immediately after creation.</p>
+       </div>
+
+       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="fromEmail" className="block text-sm font-medium text-gray-700">
              From Email (Official HR Address)
            </label>
            <input
