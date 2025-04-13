@@ -9,19 +9,42 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@prisma/client": "^6.6.0",
+    "@sendgrid/mail": "^8.1.5",
+    "@tiptap/extension-color": "^2.11.7",
+    "@tiptap/extension-highlight": "^2.11.7",
+    "@tiptap/extension-link": "^2.11.7",
+    "@tiptap/extension-placeholder": "^2.11.7",
+    "@tiptap/extension-table": "^2.11.7",
+    "@tiptap/extension-table-cell": "^2.11.7",
+    "@tiptap/extension-table-header": "^2.11.7",
+    "@tiptap/extension-table-row": "^2.11.7",
+    "@tiptap/extension-text-align": "^2.11.7",
+    "@tiptap/extension-text-style": "^2.11.7",
+    "@tiptap/extension-underline": "^2.11.7",
+    "@tiptap/pm": "^2.11.7",
+    "@tiptap/react": "^2.11.7",
+    "@tiptap/starter-kit": "^2.11.7",
+    "date-fns": "^4.1.0",
+    "mammoth": "^1.9.0",
+    "next": "15.3.0",
+    "papaparse": "^5.5.2",
+    "pdf-lib": "^1.17.1",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "next": "15.3.0"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "typescript": "^5",
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@tailwindcss/typography": "^0.5.16",
     "@types/node": "^20",
+    "@types/papaparse": "^5.3.15",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@tailwindcss/postcss": "^4",
-    "tailwindcss": "^4",
     "eslint": "^9",
     "eslint-config-next": "15.3.0",
-    "@eslint/eslintrc": "^3"
+    "prisma": "^6.6.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
   }
 }
