@@ -67,3 +67,16 @@ model CampaignRecipient {
   @@index([campaignId]) // Index for faster querying by campaign
   @@index([status])     // Index for finding pending/failed recipients
 }
+
+// Define the User model for authentication
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique // User's email address, must be unique
+  password  String   // Hashed password
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Optional: Add relations to other models if users own campaigns/templates
+  // campaigns Campaign[]
+  // templates Template[]
+}
