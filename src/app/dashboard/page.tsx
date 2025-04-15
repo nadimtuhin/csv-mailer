@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 export default function DashboardPage() {
   return (
     <div>
-      <Navbar /> {/* Include the standard navbar */}
+      {/* <Navbar /> Include the standard navbar */}
       <div className="container mx-auto px-4 py-8">
         {/* Render the client component which handles fetching and displaying user data */}
         <HomePageClient />

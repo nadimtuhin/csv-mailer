@@ -107,6 +107,73 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Use Cases Section */}
+      <section className="w-full max-w-5xl px-4 mb-20 md:mb-32">
+        <h2 className="text-3xl md:text-4xl font-semibold text-slate-800 mb-12 md:mb-16 text-center">Who Is It For?</h2>
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-10">
+          {/* Use Case Card - More skimmable text */}
+          <div className="bg-white p-6 rounded-xl shadow-lg">
+            <h3 className="text-xl font-semibold text-indigo-600 mb-3">HR Departments</h3>
+            <ul className="list-disc list-inside space-y-1 text-slate-600 text-base leading-relaxed">
+              <li>Salary Statements</li>
+              <li>Certificates</li>
+              <li>Policy Updates</li>
+              <li>Announcements</li>
+            </ul>
+          </div>
+          {/* Use Case Card */}
+          <div className="bg-white p-6 rounded-xl shadow-lg">
+            <h3 className="text-xl font-semibold text-indigo-600 mb-3">Marketing Teams</h3>
+             <ul className="list-disc list-inside space-y-1 text-slate-600 text-base leading-relaxed">
+              <li>Newsletters</li>
+              <li>Promotions</li>
+              <li>Event Invites</li>
+              <li>Targeted Campaigns</li>
+            </ul>
+          </div>
+          {/* Use Case Card */}
+          <div className="bg-white p-6 rounded-xl shadow-lg">
+            <h3 className="text-xl font-semibold text-indigo-600 mb-3">Sales Professionals</h3>
+             <ul className="list-disc list-inside space-y-1 text-slate-600 text-base leading-relaxed">
+              <li>Personalized Follow-ups</li>
+              <li>Proposals</li>
+              <li>Outreach</li>
+              <li>Lead Nurturing</li>
+            </ul>
+          </div>
+          {/* Use Case Card */}
+          <div className="bg-white p-6 rounded-xl shadow-lg">
+            <h3 className="text-xl font-semibold text-indigo-600 mb-3">Event Organizers</h3>
+             <ul className="list-disc list-inside space-y-1 text-slate-600 text-base leading-relaxed">
+              <li>Schedules & Tickets</li>
+              <li>Attendee Updates</li>
+              <li>Feedback Requests</li>
+              <li>Post-Event Communication</li>
+            </ul>
+          </div>
+           {/* Use Case Card */}
+          <div className="bg-white p-6 rounded-xl shadow-lg">
+            <h3 className="text-xl font-semibold text-indigo-600 mb-3">Educators & Trainers</h3>
+             <ul className="list-disc list-inside space-y-1 text-slate-600 text-base leading-relaxed">
+              <li>Course Materials</li>
+              <li>Grade Reports</li>
+              <li>Certificates</li>
+              <li>Workshop Reminders</li>
+            </ul>
+          </div>
+           {/* Use Case Card */}
+          <div className="bg-white p-6 rounded-xl shadow-lg">
+            <h3 className="text-xl font-semibold text-indigo-600 mb-3">Anyone with a List!</h3>
+             <ul className="list-disc list-inside space-y-1 text-slate-600 text-base leading-relaxed">
+              <li>Save Time</li>
+              <li>Personalize Bulk Emails</li>
+              <li>Simple CSV Import</li>
+              <li>Easy Template Use</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
       {/* Pricing Tiers Section - Refined card styles, spacing, typography */}
       <section className="w-full max-w-5xl px-4 mb-20 md:mb-32">
         <h2 className="text-3xl md:text-4xl font-semibold text-slate-800 mb-12 md:mb-16 text-center">Choose Your Plan</h2>
