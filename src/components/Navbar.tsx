@@ -39,8 +39,8 @@ const Navbar = () => {
         </Link>
         <div className="space-x-4 flex items-center">
           {/* Links for logged-in users */}
-          <Link href="/" className="text-gray-300 hover:text-white">
-            Home
+          <Link href="/dashboard" className="text-gray-300 hover:text-white">
+            Dashboard
           </Link>
           <Link href="/campaigns" className="text-gray-300 hover:text-white">
             Campaigns
