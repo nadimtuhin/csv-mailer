@@ -67,10 +67,19 @@ export async function middleware(request: NextRequest) {
       const secretKey = await getSecretKey();
       const { payload } = await jwtVerify(token, secretKey);
 
-      // Add user info to headers for downstream use (optional)
+      // Ensure organizationId is present in the JWT (required for multi-tenancy)
+      if (!payload.organizationId) {
+        return NextResponse.json(
+          { error: 'Invalid token: missing organization. Please login again.' },
+          { status: 401 }
+        );
+      }
+
+      // Add user info and organizationId to headers for downstream use
       const requestHeaders = new Headers(request.headers);
       requestHeaders.set('x-user-id', payload.userId as string);
       requestHeaders.set('x-user-email', payload.email as string);
+      requestHeaders.set('x-organization-id', payload.organizationId as string);
 
       return NextResponse.next({
         request: {
