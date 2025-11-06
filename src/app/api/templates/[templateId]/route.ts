@@ -9,22 +9,30 @@ const updateTemplateSchema = z.object({
 });
 
 
-// Handler for GET /api/templates/[templateId] - Fetch a single template
+// Handler for GET /api/templates/[templateId] - Fetch a single template (tenant-scoped)
 export async function GET(
   request: Request,
   { params }: { params: { templateId: string } }
 ) {
   const templateId = params.templateId;
 
+  // Get organizationId from middleware-set header (tenant isolation)
+  const organizationId = request.headers.get('x-organization-id');
+
+  if (!organizationId) {
+    return NextResponse.json({ error: 'Organization context required' }, { status: 400 });
+  }
+
   if (!templateId) {
     return NextResponse.json({ error: 'Template ID is required' }, { status: 400 });
   }
 
   try {
-    const template = await prisma.template.findUnique({
+    const template = await prisma.template.findFirst({
       where: {
         id: templateId,
-        isArchived: false, // Ensure we only fetch active templates
+        organizationId, // CRITICAL: Tenant isolation
+        isArchived: false,
       },
     });
 
@@ -40,12 +48,19 @@ export async function GET(
 }
 
 
-// Handler for PUT /api/templates/[templateId] - Update a template
+// Handler for PUT /api/templates/[templateId] - Update a template (tenant-scoped)
 export async function PUT(
   request: Request,
   { params }: { params: { templateId: string } }
 ) {
   const templateId = params.templateId;
+
+  // Get organizationId from middleware-set header (tenant isolation)
+  const organizationId = request.headers.get('x-organization-id');
+
+  if (!organizationId) {
+    return NextResponse.json({ error: 'Organization context required' }, { status: 400 });
+  }
 
   if (!templateId) {
     return NextResponse.json({ error: 'Template ID is required' }, { status: 400 });
@@ -61,7 +76,7 @@ export async function PUT(
 
     const { name, htmlContent } = validation.data;
 
-    // Check if template exists (and is not archived, maybe?)
+    // Check if template exists and belongs to user's organization
     const existingTemplate = await prisma.template.findUnique({
       where: { id: templateId },
     });
@@ -69,10 +84,18 @@ export async function PUT(
     if (!existingTemplate) {
       return NextResponse.json({ error: 'Template not found' }, { status: 404 });
     }
-     // Optional: Prevent editing archived templates directly?
-     if (existingTemplate.isArchived) {
-       return NextResponse.json({ error: 'Cannot update an archived template' }, { status: 400 });
-     }
+
+    // CRITICAL: Verify template belongs to user's organization (tenant isolation)
+    if (existingTemplate.organizationId !== organizationId) {
+      return NextResponse.json(
+        { error: 'Access denied: template belongs to different organization' },
+        { status: 403 }
+      );
+    }
+
+    if (existingTemplate.isArchived) {
+      return NextResponse.json({ error: 'Cannot update an archived template' }, { status: 400 });
+    }
 
     const updatedTemplate = await prisma.template.update({
       where: { id: templateId },
@@ -85,18 +108,27 @@ export async function PUT(
     return NextResponse.json(updatedTemplate);
   } catch (error) {
     console.error('Error updating template:', error);
-    // Handle potential Prisma errors, e.g., unique constraint violation if name needs to be unique
     return NextResponse.json({ error: 'Failed to update template' }, { status: 500 });
   }
 }
 
 
-// Handler for PATCH /api/templates/[templateId] - Archive/Unarchive a template
+// Handler for PATCH /api/templates/[templateId] - Archive/Unarchive a template (tenant-scoped)
 export async function PATCH(
   request: Request,
   { params }: { params: { templateId: string } }
 ) {
   const templateId = params.templateId;
+
+  // Get organizationId from middleware-set header (tenant isolation)
+  const organizationId = request.headers.get('x-organization-id');
+
+  if (!organizationId) {
+    return NextResponse.json(
+      { error: 'Organization context required' },
+      { status: 400 }
+    );
+  }
 
   if (!templateId) {
     return NextResponse.json(
@@ -106,7 +138,7 @@ export async function PATCH(
   }
 
   try {
-    // Check if the template exists
+    // Check if the template exists and belongs to user's organization
     const existingTemplate = await prisma.template.findUnique({
       where: { id: templateId },
     });
@@ -118,18 +150,26 @@ export async function PATCH(
       );
     }
 
+    // CRITICAL: Verify template belongs to user's organization (tenant isolation)
+    if (existingTemplate.organizationId !== organizationId) {
+      return NextResponse.json(
+        { error: 'Access denied: template belongs to different organization' },
+        { status: 403 }
+      );
+    }
+
     if (existingTemplate.isArchived) {
       // Optionally allow unarchiving, or just return success/no-op
       return NextResponse.json(
         { message: 'Template is already archived' },
-        { status: 200 } // Or 400 if unarchiving isn't supported here
+        { status: 200 }
       );
     }
 
     // Toggle the isArchived status
     const updatedTemplate = await prisma.template.update({
       where: { id: templateId },
-      data: { isArchived: !existingTemplate.isArchived }, // Toggle the flag
+      data: { isArchived: !existingTemplate.isArchived },
     });
 
     const message = updatedTemplate.isArchived
