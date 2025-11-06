@@ -13,6 +13,14 @@ jest.mock('@/lib/prisma', () => ({
       create: jest.fn(),
       update: jest.fn(),
     },
+    organization: {
+      findUnique: jest.fn(),
+      create: jest.fn(),
+    },
+    userOrganization: {
+      create: jest.fn(),
+    },
+    $transaction: jest.fn(),
     $disconnect: jest.fn(),
   },
 }));
@@ -20,9 +28,13 @@ jest.mock('jsonwebtoken');
 
 const mockGetTokensFromCode = jest.mocked(googleOAuth.getTokensFromCode);
 const mockGetUserInfo = jest.mocked(googleOAuth.getUserInfo);
-const mockFindUnique = jest.mocked(prisma.user.findUnique);
-const mockCreate = jest.mocked(prisma.user.create);
-const mockUpdate = jest.mocked(prisma.user.update);
+const mockUserFindUnique = jest.mocked(prisma.user.findUnique);
+const mockUserCreate = jest.mocked(prisma.user.create);
+const mockUserUpdate = jest.mocked(prisma.user.update);
+const mockOrgFindUnique = jest.mocked(prisma.organization.findUnique);
+const mockOrgCreate = jest.mocked(prisma.organization.create);
+const mockUserOrgCreate = jest.mocked(prisma.userOrganization.create);
+const mockTransaction = jest.mocked(prisma.$transaction);
 const mockJwtSign = jest.mocked(jwt.sign);
 
 describe('GET /api/auth/google/callback', () => {
@@ -65,14 +77,61 @@ describe('GET /api/auth/google/callback', () => {
       id: 'user-id',
       email: 'newuser@example.com',
       password: 'oauth_random_string',
+      googleId: 'google-user-id',
+      name: 'New User',
+      picture: 'https://example.com/photo.jpg',
+      authProvider: 'google',
       createdAt: new Date(),
       updatedAt: new Date(),
     };
 
+    const mockOrganization = {
+      id: 'org-id',
+      name: "New User's Organization",
+      slug: 'newuser',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const mockUserWithOrgs = {
+      ...mockCreatedUser,
+      organizations: [
+        {
+          id: 'user-org-1',
+          userId: 'user-id',
+          organizationId: 'org-id',
+          role: 'owner',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          organization: mockOrganization,
+        },
+      ],
+    };
+
     mockGetTokensFromCode.mockResolvedValue(mockTokens as any);
     mockGetUserInfo.mockResolvedValue(mockGoogleUser);
-    mockFindUnique.mockResolvedValue(null); // User doesn't exist
-    mockCreate.mockResolvedValue(mockCreatedUser);
+
+    // First call: check if user exists (returns null for new user)
+    // Second call: fetch user with organizations
+    mockUserFindUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(mockUserWithOrgs);
+
+    mockOrgFindUnique.mockResolvedValue(null); // Slug is available
+
+    // Mock transaction to execute callback
+    mockTransaction.mockImplementation(async (callback: any) => {
+      const txClient = {
+        user: { create: mockUserCreate },
+        organization: { create: mockOrgCreate },
+        userOrganization: { create: mockUserOrgCreate },
+      };
+      return callback(txClient);
+    });
+
+    mockUserCreate.mockResolvedValue(mockCreatedUser);
+    mockOrgCreate.mockResolvedValue(mockOrganization);
+    mockUserOrgCreate.mockResolvedValue({} as any);
     mockJwtSign.mockReturnValue('mock-jwt-token' as any);
 
     const state = JSON.stringify({ redirectTo: '/dashboard', timestamp: Date.now() });
@@ -86,19 +145,31 @@ describe('GET /api/auth/google/callback', () => {
     expect(response.headers.get('location')).toContain('/dashboard');
     expect(mockGetTokensFromCode).toHaveBeenCalledWith('auth-code');
     expect(mockGetUserInfo).toHaveBeenCalledWith('mock-access-token');
-    expect(mockFindUnique).toHaveBeenCalledWith({
+
+    // First call: check if user exists
+    expect(mockUserFindUnique).toHaveBeenNthCalledWith(1, {
       where: { email: 'newuser@example.com' },
     });
-    expect(mockCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        email: 'newuser@example.com',
-        password: expect.stringContaining('oauth_'),
-      }),
+    // Second call: fetch user with organizations
+    expect(mockUserFindUnique).toHaveBeenNthCalledWith(2, {
+      where: { id: 'user-id' },
+      include: {
+        organizations: {
+          include: {
+            organization: true,
+          },
+          orderBy: {
+            role: 'asc',
+          },
+        },
+      },
     });
+
     expect(mockJwtSign).toHaveBeenCalledWith(
       {
         userId: 'user-id',
         email: 'newuser@example.com',
+        organizationId: 'org-id',
         authMethod: 'google',
       },
       'test-secret-key',
@@ -147,8 +218,8 @@ describe('GET /api/auth/google/callback', () => {
 
     mockGetTokensFromCode.mockResolvedValue(mockTokens as any);
     mockGetUserInfo.mockResolvedValue(mockGoogleUser);
-    mockFindUnique.mockResolvedValue(mockExistingUser);
-    mockUpdate.mockResolvedValue(mockUpdatedUser);
+    mockUserFindUnique.mockResolvedValue(mockExistingUser);
+    mockUserUpdate.mockResolvedValue(mockUpdatedUser);
     mockJwtSign.mockReturnValue('mock-jwt-token' as any);
 
     const request = new NextRequest(
@@ -158,9 +229,9 @@ describe('GET /api/auth/google/callback', () => {
     const response = await GET(request);
 
     expect(response.status).toBe(307);
-    expect(mockFindUnique).toHaveBeenCalled();
-    expect(mockCreate).not.toHaveBeenCalled(); // Should not create new user
-    expect(mockUpdate).toHaveBeenCalledWith({
+    expect(mockUserFindUnique).toHaveBeenCalled();
+    expect(mockUserCreate).not.toHaveBeenCalled(); // Should not create new user
+    expect(mockUserUpdate).toHaveBeenCalledWith({
       where: { id: 'existing-user-id' },
       data: {
         googleId: 'google-user-id',
@@ -206,7 +277,7 @@ describe('GET /api/auth/google/callback', () => {
 
     mockGetTokensFromCode.mockResolvedValue(mockTokens as any);
     mockGetUserInfo.mockResolvedValue(mockGoogleUser);
-    mockFindUnique.mockResolvedValue(mockLinkedUser);
+    mockUserFindUnique.mockResolvedValue(mockLinkedUser);
     mockJwtSign.mockReturnValue('mock-jwt-token' as any);
 
     const request = new NextRequest(
@@ -216,9 +287,9 @@ describe('GET /api/auth/google/callback', () => {
     const response = await GET(request);
 
     expect(response.status).toBe(307);
-    expect(mockFindUnique).toHaveBeenCalled();
-    expect(mockCreate).not.toHaveBeenCalled();
-    expect(mockUpdate).not.toHaveBeenCalled(); // Should not update already-linked user
+    expect(mockUserFindUnique).toHaveBeenCalled();
+    expect(mockUserCreate).not.toHaveBeenCalled();
+    expect(mockUserUpdate).not.toHaveBeenCalled(); // Should not update already-linked user
     expect(mockJwtSign).toHaveBeenCalled();
   });
 
@@ -270,8 +341,8 @@ describe('GET /api/auth/google/callback', () => {
 
     expect(response.status).toBe(307);
     expect(response.headers.get('location')).toContain('/login?error=email_not_verified');
-    expect(mockFindUnique).not.toHaveBeenCalled();
-    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockUserFindUnique).not.toHaveBeenCalled();
+    expect(mockUserCreate).not.toHaveBeenCalled();
   });
 
   it('should handle missing access token', async () => {
@@ -308,7 +379,7 @@ describe('GET /api/auth/google/callback', () => {
 
     mockGetTokensFromCode.mockResolvedValue(mockTokens as any);
     mockGetUserInfo.mockResolvedValue(mockGoogleUser);
-    mockFindUnique.mockResolvedValue(mockUser);
+    mockUserFindUnique.mockResolvedValue(mockUser);
     mockJwtSign.mockReturnValue('token' as any);
 
     const state = JSON.stringify({ redirectTo: '/templates' });
@@ -364,7 +435,7 @@ describe('GET /api/auth/google/callback', () => {
 
     mockGetTokensFromCode.mockResolvedValue(mockTokens as any);
     mockGetUserInfo.mockResolvedValue(mockGoogleUser);
-    mockFindUnique.mockResolvedValue(mockUser);
+    mockUserFindUnique.mockResolvedValue(mockUser);
     mockJwtSign.mockReturnValue('token' as any);
 
     const request = new NextRequest(
