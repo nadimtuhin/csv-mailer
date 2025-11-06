@@ -31,6 +31,7 @@
     "@types/jsonwebtoken": "^9.0.9",
     "bcrypt": "^5.1.1",
     "date-fns": "^4.1.0",
+    "googleapis": "^164.1.0",
     "jose": "^6.1.0",
     "jsonwebtoken": "^9.0.2",
     "mammoth": "^1.9.0",
