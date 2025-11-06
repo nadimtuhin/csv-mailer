@@ -10,44 +10,85 @@ datasource db {
   url      = env("DATABASE_URL") // Points to the .env file
 }
 
+// Organization model for multi-tenancy
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique // URL-friendly identifier
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  users     UserOrganization[]
+  templates Template[]
+  campaigns Campaign[]
+}
+
+// Join table for User-Organization many-to-many relationship
+model UserOrganization {
+  id             String   @id @default(cuid())
+  userId         String
+  organizationId String
+  role           String   @default("member") // "owner", "admin", "member"
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId]) // A user can only belong to an organization once
+  @@index([userId])
+  @@index([organizationId])
+}
+
 // Define the Template model
 model Template {
-  id          String   @id @default(cuid()) // Use cuid for unique IDs
-  name        String
-  htmlContent String   // Store the rich text HTML content
-  isArchived  Boolean  @default(false) // Added for archiving
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(cuid()) // Use cuid for unique IDs
+  name           String
+  htmlContent    String   // Store the rich text HTML content
+  isArchived     Boolean  @default(false) // Added for archiving
+  organizationId String   // Multi-tenancy: which organization owns this template
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  // Relation to Campaign (if needed, e.g., to track which template was used)
-  // campaigns Campaign[]
+  // Relations
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, isArchived]) // Compound index for common queries
 }
 
 // Model for tracking email sending campaigns
 model Campaign {
-  id             String              @id @default(cuid())
-  name           String?             // Optional name for the campaign
-  status         String              @default("pending") // e.g., pending, processing, completed, failed
+  id              String              @id @default(cuid())
+  name            String?             // Optional name for the campaign
+  status          String              @default("pending") // e.g., pending, processing, completed, failed
   totalRecipients Int
-  sentCount      Int                 @default(0)
-  failedCount    Int                 @default(0)
-  skippedCount   Int                 @default(0)
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
+  sentCount       Int                 @default(0)
+  failedCount     Int                 @default(0)
+  skippedCount    Int                 @default(0)
+  organizationId  String              // Multi-tenancy: which organization owns this campaign
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
   // Store config used for the campaign
-  subject        String
-  fromEmail      String
-  fromName       String?
-  replyToEmail   String
-  templateId     String?             // Link to the Template used (optional if storing HTML directly)
+  subject         String
+  fromEmail       String
+  fromName        String?
+  replyToEmail    String
+  templateId      String?             // Link to the Template used (optional if storing HTML directly)
   // template     Template? @relation(fields: [templateId], references: [id]) // Optional relation
-  pdfTemplatePath String?            // Store path if PDF was used (for potential retry info)
-  scheduledAt    DateTime?           // Optional time for scheduled dispatch
-  isArchived     Boolean             @default(false) // Added for archiving
+  pdfTemplatePath String?             // Store path if PDF was used (for potential retry info)
+  scheduledAt     DateTime?           // Optional time for scheduled dispatch
+  isArchived      Boolean             @default(false) // Added for archiving
 
-  recipients     CampaignRecipient[] // Relation to individual recipients
+  // Relations
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recipients   CampaignRecipient[] // Relation to individual recipients
 
-  @@index([isArchived]) // Index for filtering archived campaigns
+  @@index([organizationId])
+  @@index([organizationId, isArchived]) // Compound index for common queries
+  @@index([organizationId, status]) // Index for status filtering per org
 }
 
 // Model for tracking the status of each recipient within a campaign
@@ -83,7 +124,6 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Optional: Add relations to other models if users own campaigns/templates
-  // campaigns Campaign[]
-  // templates Template[]
+  // Relations - Multi-tenancy
+  organizations UserOrganization[] // Users can belong to multiple organizations
 }

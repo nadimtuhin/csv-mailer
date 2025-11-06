@@ -72,19 +72,54 @@ export async function GET(request: Request) {
     });
 
     if (!user) {
-      // Create new user with OAuth
-      user = await prisma.user.create({
-        data: {
-          email: googleUser.email,
-          // For OAuth users, we don't have a password
-          // Set a random unguessable string that can never be used to login
-          password: `oauth_${crypto.randomUUID()}_${Date.now()}`,
-          googleId: googleUser.id,
-          name: googleUser.name || null,
-          picture: googleUser.picture || null,
-          authProvider: 'google',
-        },
+      // Create new user with OAuth and organization in a transaction
+      const emailUsername = googleUser.email.split('@')[0];
+      const baseSlug = emailUsername.toLowerCase().replace(/[^a-z0-9]/g, '-');
+      let slug = baseSlug;
+      let slugSuffix = 1;
+
+      // Ensure slug is unique
+      while (await prisma.organization.findUnique({ where: { slug } })) {
+        slug = `${baseSlug}-${slugSuffix}`;
+        slugSuffix++;
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        // Create the user
+        const newUser = await tx.user.create({
+          data: {
+            email: googleUser.email,
+            // For OAuth users, we don't have a password
+            // Set a random unguessable string that can never be used to login
+            password: `oauth_${crypto.randomUUID()}_${Date.now()}`,
+            googleId: googleUser.id,
+            name: googleUser.name || null,
+            picture: googleUser.picture || null,
+            authProvider: 'google',
+          },
+        });
+
+        // Create organization for the user
+        const organization = await tx.organization.create({
+          data: {
+            name: googleUser.name ? `${googleUser.name}'s Organization` : `${emailUsername}'s Organization`,
+            slug,
+          },
+        });
+
+        // Link user to organization as owner
+        await tx.userOrganization.create({
+          data: {
+            userId: newUser.id,
+            organizationId: organization.id,
+            role: 'owner',
+          },
+        });
+
+        return newUser;
       });
+
+      user = result;
     } else {
       // Update existing user with Google profile data if not already linked
       if (!user.googleId) {
