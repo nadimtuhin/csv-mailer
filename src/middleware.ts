@@ -25,6 +25,8 @@ export async function middleware(request: NextRequest) {
     '/api/auth/login',
     '/api/auth/signup',
     '/api/auth/logout',
+    '/api/auth/google',
+    '/api/auth/google/callback',
   ];
 
   // Define protected API routes that require authentication

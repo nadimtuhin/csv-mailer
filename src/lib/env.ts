@@ -19,6 +19,11 @@ const envSchema = z.object({
   // Email Service
   SENDGRID_API_KEY: z.string().min(1, 'SENDGRID_API_KEY is required'),
 
+  // Google OAuth (optional)
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_REDIRECT_URI: z.string().url().optional(),
+
   // Environment
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 
