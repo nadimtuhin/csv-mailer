@@ -116,4 +116,55 @@ export async function PUT(request: Request) {
 }
 
 
-// TODO: Add DELETE /api/templates?id=... handler later if needed
+// DELETE /api/templates?id=... - Archive (soft delete) a template
+export async function DELETE(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get('id');
+
+  if (!id) {
+    return NextResponse.json(
+      { message: 'Missing template id parameter' },
+      { status: 400 }
+    );
+  }
+
+  try {
+    // Check if the template exists
+    const existingTemplate = await prisma.template.findUnique({
+      where: { id },
+    });
+
+    if (!existingTemplate) {
+      return NextResponse.json(
+        { message: 'Template not found' },
+        { status: 404 }
+      );
+    }
+
+    if (existingTemplate.isArchived) {
+      return NextResponse.json(
+        { message: 'Template is already archived' },
+        { status: 400 }
+      );
+    }
+
+    // Soft delete by setting isArchived to true
+    const archivedTemplate = await prisma.template.update({
+      where: { id },
+      data: {
+        isArchived: true,
+      },
+    });
+
+    return NextResponse.json(
+      { message: 'Template archived successfully', template: archivedTemplate },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error('Error archiving template:', error);
+    return NextResponse.json(
+      { message: 'Error archiving template' },
+      { status: 500 }
+    );
+  }
+}
