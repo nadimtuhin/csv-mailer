@@ -79,12 +79,25 @@ export async function GET(request: Request) {
           // For OAuth users, we don't have a password
           // Set a random unguessable string that can never be used to login
           password: `oauth_${crypto.randomUUID()}_${Date.now()}`,
-          // You might want to add additional fields like:
-          // name: googleUser.name,
-          // picture: googleUser.picture,
-          // googleId: googleUser.id,
+          googleId: googleUser.id,
+          name: googleUser.name || null,
+          picture: googleUser.picture || null,
+          authProvider: 'google',
         },
       });
+    } else {
+      // Update existing user with Google profile data if not already linked
+      if (!user.googleId) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            googleId: googleUser.id,
+            name: user.name || googleUser.name || null,
+            picture: user.picture || googleUser.picture || null,
+            authProvider: 'google',
+          },
+        });
+      }
     }
 
     // Generate JWT token
