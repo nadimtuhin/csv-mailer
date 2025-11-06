@@ -11,14 +11,26 @@ jest.mock('@/lib/prisma', () => ({
       findUnique: jest.fn(),
       create: jest.fn(),
     },
+    organization: {
+      findUnique: jest.fn(),
+      create: jest.fn(),
+    },
+    userOrganization: {
+      create: jest.fn(),
+    },
+    $transaction: jest.fn(),
     $disconnect: jest.fn(),
   },
 }));
 
 jest.mock('bcrypt');
 
-const mockFindUnique = jest.mocked(prisma.user.findUnique);
-const mockCreate = jest.mocked(prisma.user.create);
+const mockUserFindUnique = jest.mocked(prisma.user.findUnique);
+const mockUserCreate = jest.mocked(prisma.user.create);
+const mockOrgFindUnique = jest.mocked(prisma.organization.findUnique);
+const mockOrgCreate = jest.mocked(prisma.organization.create);
+const mockUserOrgCreate = jest.mocked(prisma.userOrganization.create);
+const mockTransaction = jest.mocked(prisma.$transaction);
 const mockBcryptHash = jest.mocked(bcrypt.hash);
 
 describe('POST /api/auth/signup', () => {
@@ -33,11 +45,38 @@ describe('POST /api/auth/signup', () => {
       password: 'hashedpassword123',
       createdAt: new Date(),
       updatedAt: new Date(),
+      googleId: null,
+      name: null,
+      picture: null,
+      authProvider: 'password',
     };
 
-    mockFindUnique.mockResolvedValue(null); // User doesn't exist
+    const mockOrganization = {
+      id: 'org-id',
+      name: "newuser's Organization",
+      slug: 'newuser',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    mockUserFindUnique.mockResolvedValue(null); // User doesn't exist
+    mockOrgFindUnique.mockResolvedValue(null); // Slug is available
     mockBcryptHash.mockResolvedValue('hashedpassword123' as never);
-    mockCreate.mockResolvedValue(mockUser);
+
+    // Mock the transaction to execute the callback and return the result
+    mockTransaction.mockImplementation(async (callback: any) => {
+      // Create a mock transaction client with the same methods
+      const txClient = {
+        user: { create: mockUserCreate },
+        organization: { create: mockOrgCreate },
+        userOrganization: { create: mockUserOrgCreate },
+      };
+      return callback(txClient);
+    });
+
+    mockUserCreate.mockResolvedValue(mockUser);
+    mockOrgCreate.mockResolvedValue(mockOrganization);
+    mockUserOrgCreate.mockResolvedValue({} as any);
 
     const request = new NextRequest('http://localhost:3000/api/auth/signup', {
       method: 'POST',
@@ -51,18 +90,13 @@ describe('POST /api/auth/signup', () => {
     const data = await response.json();
 
     expect(response.status).toBe(201);
-    expect(data.email).toBe('newuser@example.com');
-    expect(data.password).toBeUndefined(); // Password should not be returned
-    expect(mockFindUnique).toHaveBeenCalledWith({
+    expect(data.user.email).toBe('newuser@example.com');
+    expect(data.user.password).toBeUndefined(); // Password should not be returned
+    expect(data.organization.name).toBe("newuser's Organization");
+    expect(mockUserFindUnique).toHaveBeenCalledWith({
       where: { email: 'newuser@example.com' },
     });
     expect(mockBcryptHash).toHaveBeenCalledWith('password123', 10);
-    expect(mockCreate).toHaveBeenCalledWith({
-      data: {
-        email: 'newuser@example.com',
-        password: 'hashedpassword123',
-      },
-    });
   });
 
   it('should return 400 if email is missing', async () => {
@@ -78,7 +112,7 @@ describe('POST /api/auth/signup', () => {
 
     expect(response.status).toBe(400);
     expect(data.error).toBe('Email and password are required');
-    expect(mockFindUnique).not.toHaveBeenCalled();
+    expect(mockUserFindUnique).not.toHaveBeenCalled();
   });
 
   it('should return 400 if password is missing', async () => {
@@ -110,7 +144,7 @@ describe('POST /api/auth/signup', () => {
 
     expect(response.status).toBe(400);
     expect(data.error).toBe('Invalid email format');
-    expect(mockFindUnique).not.toHaveBeenCalled();
+    expect(mockUserFindUnique).not.toHaveBeenCalled();
   });
 
   it('should return 400 if password is too short', async () => {
@@ -138,7 +172,7 @@ describe('POST /api/auth/signup', () => {
       updatedAt: new Date(),
     };
 
-    mockFindUnique.mockResolvedValue(existingUser);
+    mockUserFindUnique.mockResolvedValue(existingUser);
 
     const request = new NextRequest('http://localhost:3000/api/auth/signup', {
       method: 'POST',
@@ -173,7 +207,7 @@ describe('POST /api/auth/signup', () => {
   });
 
   it('should return 500 if there is a database error', async () => {
-    mockFindUnique.mockRejectedValue(new Error('Database connection error'));
+    mockUserFindUnique.mockRejectedValue(new Error('Database connection error'));
 
     const request = new NextRequest('http://localhost:3000/api/auth/signup', {
       method: 'POST',

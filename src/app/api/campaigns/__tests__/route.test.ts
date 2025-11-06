@@ -34,6 +34,17 @@ const mockCreateMany = jest.mocked(prisma.campaignRecipient.createMany);
 const mockFsAccess = jest.mocked(fs.access);
 const mockFsUnlink = jest.mocked(fs.unlink);
 
+// Test organization ID (multi-tenancy)
+const TEST_ORG_ID = 'test-org-123';
+
+// Helper to create NextRequest with required headers for multi-tenancy
+function createAuthenticatedRequest(url: string, options?: RequestInit): NextRequest {
+  const request = new NextRequest(url, options);
+  // Mock the middleware-injected header
+  request.headers.set('x-organization-id', TEST_ORG_ID);
+  return request;
+}
+
 describe('GET /api/campaigns', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -69,7 +80,7 @@ describe('GET /api/campaigns', () => {
 
     mockFindMany.mockResolvedValue(mockCampaigns);
 
-    const request = new NextRequest('http://localhost:3000/api/campaigns');
+    const request = createAuthenticatedRequest('http://localhost:3000/api/campaigns');
     const response = await GET(request);
     const data = await response.json();
 
@@ -78,7 +89,7 @@ describe('GET /api/campaigns', () => {
     expect(data[0].status).toBe('completed');
     expect(mockFindMany).toHaveBeenCalledWith({
       take: undefined,
-      where: { isArchived: false },
+      where: { organizationId: TEST_ORG_ID, isArchived: false },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
@@ -113,7 +124,7 @@ describe('GET /api/campaigns', () => {
 
     mockFindMany.mockResolvedValue(mockCampaigns);
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/campaigns?includeArchived=true'
     );
     const response = await GET(request);
@@ -121,7 +132,7 @@ describe('GET /api/campaigns', () => {
     expect(response.status).toBe(200);
     expect(mockFindMany).toHaveBeenCalledWith({
       take: undefined,
-      where: { isArchived: undefined },
+      where: { organizationId: TEST_ORG_ID, isArchived: undefined },
       orderBy: { createdAt: 'desc' },
       select: expect.any(Object),
     });
@@ -130,7 +141,7 @@ describe('GET /api/campaigns', () => {
   it('should limit results when limit parameter is provided', async () => {
     mockFindMany.mockResolvedValue([]);
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/campaigns?limit=10'
     );
     const response = await GET(request);
@@ -138,14 +149,14 @@ describe('GET /api/campaigns', () => {
     expect(response.status).toBe(200);
     expect(mockFindMany).toHaveBeenCalledWith({
       take: 10,
-      where: { isArchived: false },
+      where: { organizationId: TEST_ORG_ID, isArchived: false },
       orderBy: { createdAt: 'desc' },
       select: expect.any(Object),
     });
   });
 
   it('should return 400 for invalid limit parameter', async () => {
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/campaigns?limit=invalid'
     );
     const response = await GET(request);
@@ -157,7 +168,7 @@ describe('GET /api/campaigns', () => {
   });
 
   it('should return 400 for negative limit parameter', async () => {
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/campaigns?limit=-5'
     );
     const response = await GET(request);
@@ -170,7 +181,7 @@ describe('GET /api/campaigns', () => {
   it('should return 500 if there is a database error', async () => {
     mockFindMany.mockRejectedValue(new Error('Database connection error'));
 
-    const request = new NextRequest('http://localhost:3000/api/campaigns');
+    const request = createAuthenticatedRequest('http://localhost:3000/api/campaigns');
     const response = await GET(request);
     const data = await response.json();
 
@@ -214,6 +225,7 @@ describe('POST /api/campaigns', () => {
       templateId: 'template-id',
       pdfTemplatePath: null,
       scheduledAt: null,
+      organizationId: TEST_ORG_ID,
       createdAt: new Date(),
       updatedAt: new Date(),
       isArchived: false,
@@ -223,7 +235,7 @@ describe('POST /api/campaigns', () => {
     mockCreateMany.mockResolvedValue({ count: 2 });
     mockUpdate.mockResolvedValue(createdCampaign);
 
-    const request = new NextRequest('http://localhost:3000/api/campaigns', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/campaigns', {
       method: 'POST',
       body: JSON.stringify(campaignData),
     });
@@ -240,6 +252,7 @@ describe('POST /api/campaigns', () => {
         status: 'pending',
         totalRecipients: 2,
         subject: 'Test Subject',
+        organizationId: TEST_ORG_ID,
       }),
     });
     expect(mockCreateMany).toHaveBeenCalledWith({
@@ -251,7 +264,7 @@ describe('POST /api/campaigns', () => {
   });
 
   it('should return 400 if recipients list is empty', async () => {
-    const request = new NextRequest('http://localhost:3000/api/campaigns', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/campaigns', {
       method: 'POST',
       body: JSON.stringify({
         recipients: [],
@@ -271,7 +284,7 @@ describe('POST /api/campaigns', () => {
   });
 
   it('should return 400 if subject is missing', async () => {
-    const request = new NextRequest('http://localhost:3000/api/campaigns', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/campaigns', {
       method: 'POST',
       body: JSON.stringify({
         recipients: [{ email: 'test@example.com' }],
@@ -291,7 +304,7 @@ describe('POST /api/campaigns', () => {
   });
 
   it('should return 400 if fromEmail is missing', async () => {
-    const request = new NextRequest('http://localhost:3000/api/campaigns', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/campaigns', {
       method: 'POST',
       body: JSON.stringify({
         recipients: [{ email: 'test@example.com' }],
@@ -311,7 +324,7 @@ describe('POST /api/campaigns', () => {
   });
 
   it('should return 400 if neither templateId nor templateHtml is provided', async () => {
-    const request = new NextRequest('http://localhost:3000/api/campaigns', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/campaigns', {
       method: 'POST',
       body: JSON.stringify({
         recipients: [{ email: 'test@example.com' }],
@@ -353,6 +366,7 @@ describe('POST /api/campaigns', () => {
       fromEmail: 'test@example.com',
       replyToEmail: 'reply@example.com',
       scheduledAt: new Date(futureDate),
+      organizationId: TEST_ORG_ID,
       createdAt: new Date(),
       updatedAt: new Date(),
       isArchived: false,
@@ -365,7 +379,7 @@ describe('POST /api/campaigns', () => {
     mockCreateMany.mockResolvedValue({ count: 1 });
     mockUpdate.mockResolvedValue(createdCampaign);
 
-    const request = new NextRequest('http://localhost:3000/api/campaigns', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/campaigns', {
       method: 'POST',
       body: JSON.stringify(campaignData),
     });
@@ -379,13 +393,14 @@ describe('POST /api/campaigns', () => {
       data: expect.objectContaining({
         status: 'scheduled',
         scheduledAt: expect.any(Date),
+        organizationId: TEST_ORG_ID,
       }),
     });
   });
 
   it('should return 400 if scheduled time is in the past', async () => {
     const pastDate = new Date(Date.now() - 3600000).toISOString();
-    const request = new NextRequest('http://localhost:3000/api/campaigns', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/campaigns', {
       method: 'POST',
       body: JSON.stringify({
         recipients: [{ email: 'test@example.com' }],
@@ -422,6 +437,7 @@ describe('POST /api/campaigns', () => {
       name: expect.any(String),
       status: 'pending',
       totalRecipients: 3,
+      organizationId: TEST_ORG_ID,
       createdAt: new Date(),
       updatedAt: new Date(),
       sentCount: 0,
@@ -441,7 +457,7 @@ describe('POST /api/campaigns', () => {
     mockCreateMany.mockResolvedValue({ count: 1 }); // Only 1 valid email
     mockUpdate.mockResolvedValue(createdCampaign);
 
-    const request = new NextRequest('http://localhost:3000/api/campaigns', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/campaigns', {
       method: 'POST',
       body: JSON.stringify(campaignData),
     });
@@ -473,6 +489,7 @@ describe('POST /api/campaigns', () => {
       name: expect.any(String),
       status: 'pending',
       totalRecipients: 2,
+      organizationId: TEST_ORG_ID,
       createdAt: new Date(),
       updatedAt: new Date(),
       sentCount: 0,
@@ -491,7 +508,7 @@ describe('POST /api/campaigns', () => {
     mockCreate.mockResolvedValue(createdCampaign);
     mockUpdate.mockResolvedValue(createdCampaign);
 
-    const request = new NextRequest('http://localhost:3000/api/campaigns', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/campaigns', {
       method: 'POST',
       body: JSON.stringify(campaignData),
     });
@@ -530,6 +547,7 @@ describe('POST /api/campaigns', () => {
       name: expect.any(String),
       status: 'pending',
       totalRecipients: 1,
+      organizationId: TEST_ORG_ID,
       createdAt: new Date(),
       updatedAt: new Date(),
       sentCount: 0,
@@ -547,7 +565,7 @@ describe('POST /api/campaigns', () => {
     mockCreateMany.mockResolvedValue({ count: 1 });
     mockUpdate.mockResolvedValue({} as any);
 
-    const request = new NextRequest('http://localhost:3000/api/campaigns', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/campaigns', {
       method: 'POST',
       body: JSON.stringify(campaignData),
     });
@@ -569,7 +587,7 @@ describe('POST /api/campaigns', () => {
       pdfTemplatePath: invalidPath,
     };
 
-    const request = new NextRequest('http://localhost:3000/api/campaigns', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/campaigns', {
       method: 'POST',
       body: JSON.stringify(campaignData),
     });
@@ -586,7 +604,7 @@ describe('POST /api/campaigns', () => {
   it('should return 500 if there is a database error', async () => {
     mockCreate.mockRejectedValue(new Error('Database connection error'));
 
-    const request = new NextRequest('http://localhost:3000/api/campaigns', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/campaigns', {
       method: 'POST',
       body: JSON.stringify({
         recipients: [{ email: 'test@example.com' }],

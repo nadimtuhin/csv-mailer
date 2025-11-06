@@ -7,6 +7,7 @@ jest.mock('@/lib/prisma', () => ({
   __esModule: true,
   default: {
     template: {
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
     },
@@ -14,8 +15,20 @@ jest.mock('@/lib/prisma', () => ({
 }));
 
 // Get typed mocks
+const mockFindFirst = jest.mocked(prisma.template.findFirst);
 const mockFindUnique = jest.mocked(prisma.template.findUnique);
 const mockUpdate = jest.mocked(prisma.template.update);
+
+// Test organization ID (multi-tenancy)
+const TEST_ORG_ID = 'test-org-123';
+
+// Helper to create NextRequest with required headers for multi-tenancy
+function createAuthenticatedRequest(url: string, options?: RequestInit): NextRequest {
+  const request = new NextRequest(url, options);
+  // Mock the middleware-injected header
+  request.headers.set('x-organization-id', TEST_ORG_ID);
+  return request;
+}
 
 describe('GET /api/templates/[templateId]', () => {
   beforeEach(() => {
@@ -28,13 +41,14 @@ describe('GET /api/templates/[templateId]', () => {
       name: 'Test Template',
       htmlContent: '<p>Test Content</p>',
       isArchived: false,
+      organizationId: TEST_ORG_ID,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
 
-    mockFindUnique.mockResolvedValue(mockTemplate);
+    mockFindFirst.mockResolvedValue(mockTemplate);
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/templates/template-id'
     );
     const context = { params: { templateId: 'template-id' } };
@@ -45,16 +59,17 @@ describe('GET /api/templates/[templateId]', () => {
     expect(response.status).toBe(200);
     expect(data.id).toBe('template-id');
     expect(data.name).toBe('Test Template');
-    expect(mockFindUnique).toHaveBeenCalledWith({
+    expect(mockFindFirst).toHaveBeenCalledWith({
       where: {
         id: 'template-id',
+        organizationId: TEST_ORG_ID,
         isArchived: false,
       },
     });
   });
 
   it('should return 400 if templateId is missing', async () => {
-    const request = new NextRequest('http://localhost:3000/api/templates/');
+    const request = createAuthenticatedRequest('http://localhost:3000/api/templates/');
     const context = { params: { templateId: '' } };
 
     const response = await GET(request, context);
@@ -62,13 +77,13 @@ describe('GET /api/templates/[templateId]', () => {
 
     expect(response.status).toBe(400);
     expect(data.error).toBe('Template ID is required');
-    expect(mockFindUnique).not.toHaveBeenCalled();
+    expect(mockFindFirst).not.toHaveBeenCalled();
   });
 
   it('should return 404 if template is not found', async () => {
-    mockFindUnique.mockResolvedValue(null);
+    mockFindFirst.mockResolvedValue(null);
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/templates/nonexistent-id'
     );
     const context = { params: { templateId: 'nonexistent-id' } };
@@ -81,9 +96,9 @@ describe('GET /api/templates/[templateId]', () => {
   });
 
   it('should not retrieve archived templates', async () => {
-    mockFindUnique.mockResolvedValue(null); // Archived templates won't be found
+    mockFindFirst.mockResolvedValue(null); // Archived templates won't be found
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/templates/archived-template-id'
     );
     const context = { params: { templateId: 'archived-template-id' } };
@@ -96,9 +111,9 @@ describe('GET /api/templates/[templateId]', () => {
   });
 
   it('should return 500 if there is a database error', async () => {
-    mockFindUnique.mockRejectedValue(new Error('Database connection error'));
+    mockFindFirst.mockRejectedValue(new Error('Database connection error'));
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/templates/template-id'
     );
     const context = { params: { templateId: 'template-id' } };
@@ -122,6 +137,7 @@ describe('PUT /api/templates/[templateId]', () => {
       name: 'Old Name',
       htmlContent: '<p>Old Content</p>',
       isArchived: false,
+      organizationId: TEST_ORG_ID,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -136,7 +152,7 @@ describe('PUT /api/templates/[templateId]', () => {
     mockFindUnique.mockResolvedValue(existingTemplate);
     mockUpdate.mockResolvedValue(updatedTemplate);
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/templates/template-id',
       {
         method: 'PUT',
@@ -164,7 +180,7 @@ describe('PUT /api/templates/[templateId]', () => {
   });
 
   it('should return 400 if templateId is missing', async () => {
-    const request = new NextRequest('http://localhost:3000/api/templates/', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/templates/', {
       method: 'PUT',
       body: JSON.stringify({
         name: 'Name',
@@ -181,7 +197,7 @@ describe('PUT /api/templates/[templateId]', () => {
   });
 
   it('should return 400 if name is missing', async () => {
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/templates/template-id',
       {
         method: 'PUT',
@@ -200,7 +216,7 @@ describe('PUT /api/templates/[templateId]', () => {
   });
 
   it('should return 400 if htmlContent is missing', async () => {
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/templates/template-id',
       {
         method: 'PUT',
@@ -219,7 +235,7 @@ describe('PUT /api/templates/[templateId]', () => {
   });
 
   it('should return 400 if name is empty', async () => {
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/templates/template-id',
       {
         method: 'PUT',
@@ -241,7 +257,7 @@ describe('PUT /api/templates/[templateId]', () => {
   it('should return 404 if template is not found', async () => {
     mockFindUnique.mockResolvedValue(null);
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/templates/nonexistent-id',
       {
         method: 'PUT',
@@ -267,13 +283,14 @@ describe('PUT /api/templates/[templateId]', () => {
       name: 'Archived Template',
       htmlContent: '<p>Content</p>',
       isArchived: true,
+      organizationId: TEST_ORG_ID,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
 
     mockFindUnique.mockResolvedValue(archivedTemplate);
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/templates/template-id',
       {
         method: 'PUT',
@@ -296,7 +313,7 @@ describe('PUT /api/templates/[templateId]', () => {
   it('should return 500 if there is a database error', async () => {
     mockFindUnique.mockRejectedValue(new Error('Database connection error'));
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/templates/template-id',
       {
         method: 'PUT',
@@ -327,6 +344,7 @@ describe('PATCH /api/templates/[templateId]', () => {
       name: 'Test Template',
       htmlContent: '<p>Content</p>',
       isArchived: false,
+      organizationId: TEST_ORG_ID,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -339,7 +357,7 @@ describe('PATCH /api/templates/[templateId]', () => {
     mockFindUnique.mockResolvedValue(existingTemplate);
     mockUpdate.mockResolvedValue(archivedTemplate);
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/templates/template-id',
       { method: 'PATCH' }
     );
@@ -357,7 +375,7 @@ describe('PATCH /api/templates/[templateId]', () => {
   });
 
   it('should return 400 if templateId is missing', async () => {
-    const request = new NextRequest('http://localhost:3000/api/templates/', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/templates/', {
       method: 'PATCH',
     });
     const context = { params: { templateId: '' } };
@@ -372,7 +390,7 @@ describe('PATCH /api/templates/[templateId]', () => {
   it('should return 404 if template is not found', async () => {
     mockFindUnique.mockResolvedValue(null);
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/templates/nonexistent-id',
       { method: 'PATCH' }
     );
@@ -392,13 +410,14 @@ describe('PATCH /api/templates/[templateId]', () => {
       name: 'Archived Template',
       htmlContent: '<p>Content</p>',
       isArchived: true,
+      organizationId: TEST_ORG_ID,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
 
     mockFindUnique.mockResolvedValue(archivedTemplate);
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/templates/template-id',
       { method: 'PATCH' }
     );
@@ -415,7 +434,7 @@ describe('PATCH /api/templates/[templateId]', () => {
   it('should return 500 if there is a database error', async () => {
     mockFindUnique.mockRejectedValue(new Error('Database connection error'));
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/templates/template-id',
       { method: 'PATCH' }
     );
