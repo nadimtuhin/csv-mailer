@@ -135,10 +135,35 @@ export async function GET(request: Request) {
       }
     }
 
-    // Generate JWT token
+    // Fetch user's organizations to include in JWT
+    const userWithOrgs = await prisma.user.findUnique({
+      where: { id: user.id },
+      include: {
+        organizations: {
+          include: {
+            organization: true,
+          },
+          orderBy: {
+            role: 'asc', // owner < admin < member
+          },
+        },
+      },
+    });
+
+    if (!userWithOrgs || !userWithOrgs.organizations || userWithOrgs.organizations.length === 0) {
+      return NextResponse.redirect(
+        new URL('/login?error=no_organization', request.url)
+      );
+    }
+
+    // Get default organization
+    const defaultOrganizationId = userWithOrgs.organizations[0].organizationId;
+
+    // Generate JWT token with organizationId
     const tokenPayload = {
       userId: user.id,
       email: user.email,
+      organizationId: defaultOrganizationId,
       authMethod: 'google',
     };
 

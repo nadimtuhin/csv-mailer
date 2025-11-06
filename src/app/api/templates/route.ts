@@ -3,18 +3,29 @@ import prisma from '@/lib/prisma'; // Import the Prisma client instance
 
 import { NextRequest } from 'next/server'; // Import NextRequest for query params
 
-// GET /api/templates - Retrieve non-archived templates by default
-export async function GET(request: NextRequest) { // Add request parameter
+// GET /api/templates - Retrieve non-archived templates by default (tenant-scoped)
+export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const includeArchived = searchParams.get('includeArchived') === 'true';
+
+  // Get organizationId from middleware-set header (tenant isolation)
+  const organizationId = request.headers.get('x-organization-id');
+
+  if (!organizationId) {
+    return NextResponse.json(
+      { message: 'Organization context required' },
+      { status: 400 }
+    );
+  }
 
   try {
     const templates = await prisma.template.findMany({
       where: {
-        isArchived: includeArchived ? undefined : false, // Filter out archived unless requested
+        organizationId, // CRITICAL: Filter by organization for tenant isolation
+        isArchived: includeArchived ? undefined : false,
       },
       orderBy: {
-        createdAt: 'desc', // Order by creation date, newest first
+        createdAt: 'desc',
       },
     });
     return NextResponse.json(templates);
@@ -27,8 +38,18 @@ export async function GET(request: NextRequest) { // Add request parameter
   }
 }
 
-// POST /api/templates - Create a new template
+// POST /api/templates - Create a new template (tenant-scoped)
 export async function POST(request: Request) {
+  // Get organizationId from middleware-set header
+  const organizationId = request.headers.get('x-organization-id');
+
+  if (!organizationId) {
+    return NextResponse.json(
+      { message: 'Organization context required' },
+      { status: 400 }
+    );
+  }
+
   try {
     const { name, htmlContent } = (await request.json()) as {
       name: string;
@@ -42,11 +63,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // Create template in the database
+    // Create template in the database with organizationId
     const newTemplate = await prisma.template.create({
       data: {
         name,
         htmlContent,
+        organizationId, // CRITICAL: Associate with user's organization
       },
     });
 
@@ -60,8 +82,18 @@ export async function POST(request: Request) {
   }
 }
 
-// PUT /api/templates - Update an existing template
+// PUT /api/templates - Update an existing template (tenant-scoped)
 export async function PUT(request: Request) {
+  // Get organizationId from middleware-set header
+  const organizationId = request.headers.get('x-organization-id');
+
+  if (!organizationId) {
+    return NextResponse.json(
+      { message: 'Organization context required' },
+      { status: 400 }
+    );
+  }
+
   try {
     const { id, name, htmlContent } = (await request.json()) as {
       id: string;
@@ -76,13 +108,21 @@ export async function PUT(request: Request) {
       );
     }
 
-    // Check if the template exists and is not archived before updating
+    // Check if the template exists and belongs to user's organization
     const existingTemplate = await prisma.template.findUnique({
       where: { id: id },
     });
 
     if (!existingTemplate) {
       return NextResponse.json({ message: 'Template not found' }, { status: 404 });
+    }
+
+    // CRITICAL: Verify template belongs to user's organization (tenant isolation)
+    if (existingTemplate.organizationId !== organizationId) {
+      return NextResponse.json(
+        { message: 'Access denied: template belongs to different organization' },
+        { status: 403 }
+      );
     }
 
     if (existingTemplate.isArchived) {
@@ -101,11 +141,7 @@ export async function PUT(request: Request) {
       },
     });
 
-    // Note: prisma.template.update throws an error if the record is not found,
-    // so we don't need a separate 404 check here unless we want a custom message.
-    // We could wrap this in a try/catch for specific Prisma errors if needed.
-
-    return NextResponse.json(updatedTemplate); // Return updated template
+    return NextResponse.json(updatedTemplate);
   } catch (error) {
     console.error('Error updating template:', error);
     return NextResponse.json(
@@ -116,10 +152,20 @@ export async function PUT(request: Request) {
 }
 
 
-// DELETE /api/templates?id=... - Archive (soft delete) a template
+// DELETE /api/templates?id=... - Archive (soft delete) a template (tenant-scoped)
 export async function DELETE(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
+
+  // Get organizationId from middleware-set header
+  const organizationId = request.headers.get('x-organization-id');
+
+  if (!organizationId) {
+    return NextResponse.json(
+      { message: 'Organization context required' },
+      { status: 400 }
+    );
+  }
 
   if (!id) {
     return NextResponse.json(
@@ -129,7 +175,7 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    // Check if the template exists
+    // Check if the template exists and belongs to user's organization
     const existingTemplate = await prisma.template.findUnique({
       where: { id },
     });
@@ -138,6 +184,14 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json(
         { message: 'Template not found' },
         { status: 404 }
+      );
+    }
+
+    // CRITICAL: Verify template belongs to user's organization (tenant isolation)
+    if (existingTemplate.organizationId !== organizationId) {
+      return NextResponse.json(
+        { message: 'Access denied: template belongs to different organization' },
+        { status: 403 }
       );
     }
 

@@ -28,9 +28,19 @@ export async function POST(request: Request) {
       );
     }
 
-    // Find the user by email
+    // Find the user by email and include their organizations
     const user = await prisma.user.findUnique({
       where: { email },
+      include: {
+        organizations: {
+          include: {
+            organization: true,
+          },
+          orderBy: {
+            role: 'asc', // owner < admin < member (alphabetically)
+          },
+        },
+      },
     });
 
     if (!user) {
@@ -44,10 +54,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 }); // Unauthorized
     }
 
-    // Generate JWT
+    // Check if user has at least one organization
+    if (!user.organizations || user.organizations.length === 0) {
+      return NextResponse.json(
+        { error: 'No organization found for user. Please contact support.' },
+        { status: 500 }
+      );
+    }
+
+    // Get the default organization (first one, prioritized by owner role)
+    const defaultOrgMembership = user.organizations[0];
+    const defaultOrganizationId = defaultOrgMembership.organizationId;
+
+    // Generate JWT with organizationId
     const tokenPayload = {
       userId: user.id,
       email: user.email,
+      organizationId: defaultOrganizationId,
       // Add any other relevant non-sensitive user data you might need client-side
     };
 
@@ -56,12 +79,28 @@ export async function POST(request: Request) {
       expiresIn: JWT_EXPIRES_IN,
     });
 
-    // Prepare user info to return (excluding password)
+    // Prepare user info to return (excluding password and organizations relation)
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { password: _, ...userWithoutPassword } = user;
+    const { password: _, organizations: userOrgs, ...userWithoutPassword } = user;
+
+    // Format organizations for response
+    const organizations = userOrgs.map((uo) => ({
+      id: uo.organization.id,
+      name: uo.organization.name,
+      slug: uo.organization.slug,
+      role: uo.role,
+      isDefault: uo.organizationId === defaultOrganizationId,
+    }));
 
     // Create the response first
-    const response = NextResponse.json(userWithoutPassword, { status: 200 });
+    const response = NextResponse.json(
+      {
+        ...userWithoutPassword,
+        organizations,
+        currentOrganizationId: defaultOrganizationId,
+      },
+      { status: 200 }
+    );
 
     // Set the JWT in an HTTP-only cookie on the response
     response.cookies.set(COOKIE_NAME, token, {
