@@ -51,8 +51,29 @@ describe('POST /api/auth/login', () => {
       id: 'user-id',
       email: 'test@example.com',
       password: 'hashedpassword123',
+      googleId: null,
+      name: null,
+      picture: null,
+      authProvider: 'password',
       createdAt: new Date(),
       updatedAt: new Date(),
+      organizations: [
+        {
+          id: 'user-org-1',
+          userId: 'user-id',
+          organizationId: 'org-1',
+          role: 'owner',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          organization: {
+            id: 'org-1',
+            name: "Test User's Organization",
+            slug: 'test',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        },
+      ],
     };
 
     mockFindUnique.mockResolvedValue(mockUser);
@@ -73,8 +94,21 @@ describe('POST /api/auth/login', () => {
     expect(response.status).toBe(200);
     expect(data.email).toBe('test@example.com');
     expect(data.password).toBeUndefined(); // Password should not be returned
+    expect(data.organizations).toBeDefined();
+    expect(data.organizations).toHaveLength(1);
+    expect(data.currentOrganizationId).toBe('org-1');
     expect(mockFindUnique).toHaveBeenCalledWith({
       where: { email: 'test@example.com' },
+      include: {
+        organizations: {
+          include: {
+            organization: true,
+          },
+          orderBy: {
+            role: 'asc',
+          },
+        },
+      },
     });
     expect(mockBcryptCompare).toHaveBeenCalledWith(
       'password123',
@@ -84,6 +118,7 @@ describe('POST /api/auth/login', () => {
       {
         userId: 'user-id',
         email: 'test@example.com',
+        organizationId: 'org-1',
       },
       'test-secret-key',
       { expiresIn: '1d' }
