@@ -11,6 +11,7 @@ jest.mock('@/lib/prisma', () => ({
     user: {
       findUnique: jest.fn(),
       create: jest.fn(),
+      update: jest.fn(),
     },
     $disconnect: jest.fn(),
   },
@@ -21,6 +22,7 @@ const mockGetTokensFromCode = jest.mocked(googleOAuth.getTokensFromCode);
 const mockGetUserInfo = jest.mocked(googleOAuth.getUserInfo);
 const mockFindUnique = jest.mocked(prisma.user.findUnique);
 const mockCreate = jest.mocked(prisma.user.create);
+const mockUpdate = jest.mocked(prisma.user.update);
 const mockJwtSign = jest.mocked(jwt.sign);
 
 describe('GET /api/auth/google/callback', () => {
@@ -110,7 +112,7 @@ describe('GET /api/auth/google/callback', () => {
     expect(authCookie?.value).toBe('mock-jwt-token');
   });
 
-  it('should authenticate existing user', async () => {
+  it('should authenticate existing user and link Google account', async () => {
     const mockTokens = {
       access_token: 'mock-access-token',
     };
@@ -127,13 +129,26 @@ describe('GET /api/auth/google/callback', () => {
       id: 'existing-user-id',
       email: 'existing@example.com',
       password: 'hashed-password',
+      googleId: null, // No googleId, so account should be linked
+      name: null,
+      picture: null,
+      authProvider: 'password',
       createdAt: new Date(),
       updatedAt: new Date(),
+    };
+
+    const mockUpdatedUser = {
+      ...mockExistingUser,
+      googleId: 'google-user-id',
+      name: 'Existing User',
+      picture: 'https://example.com/photo.jpg',
+      authProvider: 'google',
     };
 
     mockGetTokensFromCode.mockResolvedValue(mockTokens as any);
     mockGetUserInfo.mockResolvedValue(mockGoogleUser);
     mockFindUnique.mockResolvedValue(mockExistingUser);
+    mockUpdate.mockResolvedValue(mockUpdatedUser);
     mockJwtSign.mockReturnValue('mock-jwt-token' as any);
 
     const request = new NextRequest(
@@ -145,6 +160,15 @@ describe('GET /api/auth/google/callback', () => {
     expect(response.status).toBe(307);
     expect(mockFindUnique).toHaveBeenCalled();
     expect(mockCreate).not.toHaveBeenCalled(); // Should not create new user
+    expect(mockUpdate).toHaveBeenCalledWith({
+      where: { id: 'existing-user-id' },
+      data: {
+        googleId: 'google-user-id',
+        name: 'Existing User',
+        picture: 'https://example.com/photo.jpg',
+        authProvider: 'google',
+      },
+    });
     expect(mockJwtSign).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 'existing-user-id',
@@ -153,6 +177,49 @@ describe('GET /api/auth/google/callback', () => {
       expect.any(String),
       expect.any(Object)
     );
+  });
+
+  it('should authenticate user with already-linked Google account', async () => {
+    const mockTokens = {
+      access_token: 'mock-access-token',
+    };
+
+    const mockGoogleUser = {
+      id: 'google-user-id',
+      email: 'linked@example.com',
+      name: 'Linked User',
+      picture: 'https://example.com/photo.jpg',
+      verified_email: true,
+    };
+
+    const mockLinkedUser = {
+      id: 'linked-user-id',
+      email: 'linked@example.com',
+      password: 'hashed-password',
+      googleId: 'google-user-id', // Already has googleId
+      name: 'Linked User',
+      picture: 'https://example.com/photo.jpg',
+      authProvider: 'google',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    mockGetTokensFromCode.mockResolvedValue(mockTokens as any);
+    mockGetUserInfo.mockResolvedValue(mockGoogleUser);
+    mockFindUnique.mockResolvedValue(mockLinkedUser);
+    mockJwtSign.mockReturnValue('mock-jwt-token' as any);
+
+    const request = new NextRequest(
+      'http://localhost:3000/api/auth/google/callback?code=auth-code'
+    );
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(307);
+    expect(mockFindUnique).toHaveBeenCalled();
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled(); // Should not update already-linked user
+    expect(mockJwtSign).toHaveBeenCalled();
   });
 
   it('should redirect to login with error if code is missing', async () => {
