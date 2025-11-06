@@ -98,6 +98,3 @@ export async function PATCH(
     return NextResponse.json({ message }, { status: 500 });
   }
 }
-
-// TODO: Add DELETE handler if needed (e.g., delete campaign and recipients)
-// TODO: Add PUT handler for updating campaign name/status manually if needed

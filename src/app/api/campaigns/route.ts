@@ -88,7 +88,6 @@ export async function POST(request: Request) {
     if (!recipients || recipients.length === 0) {
       return NextResponse.json({ message: 'Recipient list cannot be empty.' }, { status: 400 });
     }
-    // TODO: Validate templateHtml content if needed (e.g., check for essential tags)
     if (!subject || !fromEmail || !replyToEmail) {
       return NextResponse.json({ message: 'Missing required campaign configuration (subject, sender emails).' }, { status: 400 });
     }
@@ -249,6 +248,3 @@ export async function POST(request: Request) {
     );
   }
 }
-
-// TODO: Add GET /api/campaigns to list campaigns (Added above)
-// TODO: Add GET /api/campaigns/[campaignId] to get campaign details
