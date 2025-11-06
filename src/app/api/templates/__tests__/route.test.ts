@@ -21,6 +21,17 @@ const mockFindUnique = jest.mocked(prisma.template.findUnique);
 const mockCreate = jest.mocked(prisma.template.create);
 const mockUpdate = jest.mocked(prisma.template.update);
 
+// Test organization ID (multi-tenancy)
+const TEST_ORG_ID = 'test-org-123';
+
+// Helper to create NextRequest with required headers for multi-tenancy
+function createAuthenticatedRequest(url: string, options?: RequestInit): NextRequest {
+  const request = new NextRequest(url, options);
+  // Mock the middleware-injected header
+  request.headers.set('x-organization-id', TEST_ORG_ID);
+  return request;
+}
+
 describe('GET /api/templates', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -33,6 +44,7 @@ describe('GET /api/templates', () => {
         name: 'Template 1',
         htmlContent: '<p>Content 1</p>',
         isArchived: false,
+        organizationId: TEST_ORG_ID,
         createdAt: new Date('2024-01-02'),
         updatedAt: new Date('2024-01-02'),
       },
@@ -41,6 +53,7 @@ describe('GET /api/templates', () => {
         name: 'Template 2',
         htmlContent: '<p>Content 2</p>',
         isArchived: false,
+        organizationId: TEST_ORG_ID,
         createdAt: new Date('2024-01-01'),
         updatedAt: new Date('2024-01-01'),
       },
@@ -48,7 +61,7 @@ describe('GET /api/templates', () => {
 
     mockFindMany.mockResolvedValue(mockTemplates);
 
-    const request = new NextRequest('http://localhost:3000/api/templates');
+    const request = createAuthenticatedRequest('http://localhost:3000/api/templates');
     const response = await GET(request);
     const data = await response.json();
 
@@ -61,7 +74,7 @@ describe('GET /api/templates', () => {
       isArchived: false,
     });
     expect(mockFindMany).toHaveBeenCalledWith({
-      where: { isArchived: false },
+      where: { organizationId: TEST_ORG_ID, isArchived: false },
       orderBy: { createdAt: 'desc' },
     });
   });
@@ -73,6 +86,7 @@ describe('GET /api/templates', () => {
         name: 'Template 1',
         htmlContent: '<p>Content 1</p>',
         isArchived: false,
+        organizationId: TEST_ORG_ID,
         createdAt: new Date('2024-01-02'),
         updatedAt: new Date('2024-01-02'),
       },
@@ -81,6 +95,7 @@ describe('GET /api/templates', () => {
         name: 'Archived Template',
         htmlContent: '<p>Archived</p>',
         isArchived: true,
+        organizationId: TEST_ORG_ID,
         createdAt: new Date('2024-01-01'),
         updatedAt: new Date('2024-01-01'),
       },
@@ -88,7 +103,7 @@ describe('GET /api/templates', () => {
 
     mockFindMany.mockResolvedValue(mockTemplates);
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/templates?includeArchived=true'
     );
     const response = await GET(request);
@@ -99,7 +114,7 @@ describe('GET /api/templates', () => {
     expect(data[0].isArchived).toBe(false);
     expect(data[1].isArchived).toBe(true);
     expect(mockFindMany).toHaveBeenCalledWith({
-      where: { isArchived: undefined },
+      where: { organizationId: TEST_ORG_ID, isArchived: undefined },
       orderBy: { createdAt: 'desc' },
     });
   });
@@ -107,7 +122,7 @@ describe('GET /api/templates', () => {
   it('should return 500 if there is a database error', async () => {
     mockFindMany.mockRejectedValue(new Error('Database connection error'));
 
-    const request = new NextRequest('http://localhost:3000/api/templates');
+    const request = createAuthenticatedRequest('http://localhost:3000/api/templates');
     const response = await GET(request);
     const data = await response.json();
 
@@ -131,13 +146,14 @@ describe('POST /api/templates', () => {
       id: 'new-template-id',
       ...newTemplateData,
       isArchived: false,
+      organizationId: TEST_ORG_ID,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
 
     mockCreate.mockResolvedValue(createdTemplate);
 
-    const request = new NextRequest('http://localhost:3000/api/templates', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/templates', {
       method: 'POST',
       body: JSON.stringify(newTemplateData),
     });
@@ -158,12 +174,13 @@ describe('POST /api/templates', () => {
       data: {
         name: newTemplateData.name,
         htmlContent: newTemplateData.htmlContent,
+        organizationId: TEST_ORG_ID,
       },
     });
   });
 
   it('should return 400 if name is missing', async () => {
-    const request = new NextRequest('http://localhost:3000/api/templates', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/templates', {
       method: 'POST',
       body: JSON.stringify({ htmlContent: '<p>Content</p>' }),
     });
@@ -177,7 +194,7 @@ describe('POST /api/templates', () => {
   });
 
   it('should return 400 if htmlContent is missing', async () => {
-    const request = new NextRequest('http://localhost:3000/api/templates', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/templates', {
       method: 'POST',
       body: JSON.stringify({ name: 'Template Name' }),
     });
@@ -193,7 +210,7 @@ describe('POST /api/templates', () => {
   it('should return 500 if there is a database error', async () => {
     mockCreate.mockRejectedValue(new Error('Database connection error'));
 
-    const request = new NextRequest('http://localhost:3000/api/templates', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/templates', {
       method: 'POST',
       body: JSON.stringify({
         name: 'Template',
@@ -220,6 +237,7 @@ describe('PUT /api/templates', () => {
       name: 'Old Name',
       htmlContent: '<p>Old Content</p>',
       isArchived: false,
+      organizationId: TEST_ORG_ID,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -240,7 +258,7 @@ describe('PUT /api/templates', () => {
     mockFindUnique.mockResolvedValue(existingTemplate);
     mockUpdate.mockResolvedValue(updatedTemplate);
 
-    const request = new NextRequest('http://localhost:3000/api/templates', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/templates', {
       method: 'PUT',
       body: JSON.stringify(updateData),
     });
@@ -268,7 +286,7 @@ describe('PUT /api/templates', () => {
   });
 
   it('should return 400 if id is missing', async () => {
-    const request = new NextRequest('http://localhost:3000/api/templates', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/templates', {
       method: 'PUT',
       body: JSON.stringify({
         name: 'Name',
@@ -285,7 +303,7 @@ describe('PUT /api/templates', () => {
   });
 
   it('should return 400 if name is missing', async () => {
-    const request = new NextRequest('http://localhost:3000/api/templates', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/templates', {
       method: 'PUT',
       body: JSON.stringify({
         id: 'template-id',
@@ -302,7 +320,7 @@ describe('PUT /api/templates', () => {
   });
 
   it('should return 400 if htmlContent is missing', async () => {
-    const request = new NextRequest('http://localhost:3000/api/templates', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/templates', {
       method: 'PUT',
       body: JSON.stringify({
         id: 'template-id',
@@ -321,7 +339,7 @@ describe('PUT /api/templates', () => {
   it('should return 404 if template is not found', async () => {
     mockFindUnique.mockResolvedValue(null);
 
-    const request = new NextRequest('http://localhost:3000/api/templates', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/templates', {
       method: 'PUT',
       body: JSON.stringify({
         id: 'nonexistent-id',
@@ -344,13 +362,14 @@ describe('PUT /api/templates', () => {
       name: 'Archived Template',
       htmlContent: '<p>Content</p>',
       isArchived: true,
+      organizationId: TEST_ORG_ID,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
 
     mockFindUnique.mockResolvedValue(archivedTemplate);
 
-    const request = new NextRequest('http://localhost:3000/api/templates', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/templates', {
       method: 'PUT',
       body: JSON.stringify({
         id: 'template-id',
@@ -370,7 +389,7 @@ describe('PUT /api/templates', () => {
   it('should return 500 if there is a database error', async () => {
     mockFindUnique.mockRejectedValue(new Error('Database connection error'));
 
-    const request = new NextRequest('http://localhost:3000/api/templates', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/templates', {
       method: 'PUT',
       body: JSON.stringify({
         id: 'template-id',
@@ -398,6 +417,7 @@ describe('DELETE /api/templates', () => {
       name: 'Test Template',
       htmlContent: '<p>Test</p>',
       isArchived: false,
+      organizationId: TEST_ORG_ID,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -410,7 +430,7 @@ describe('DELETE /api/templates', () => {
     mockFindUnique.mockResolvedValue(mockTemplate);
     mockUpdate.mockResolvedValue(archivedTemplate);
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/templates?id=test-template-id'
     );
 
@@ -430,7 +450,7 @@ describe('DELETE /api/templates', () => {
   });
 
   it('should return 400 if template id is missing', async () => {
-    const request = new NextRequest('http://localhost:3000/api/templates');
+    const request = createAuthenticatedRequest('http://localhost:3000/api/templates');
 
     const response = await DELETE(request);
     const data = await response.json();
@@ -443,7 +463,7 @@ describe('DELETE /api/templates', () => {
   it('should return 404 if template is not found', async () => {
     mockFindUnique.mockResolvedValue(null);
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/templates?id=nonexistent-id'
     );
 
@@ -464,13 +484,14 @@ describe('DELETE /api/templates', () => {
       name: 'Test Template',
       htmlContent: '<p>Test</p>',
       isArchived: true,
+      organizationId: TEST_ORG_ID,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
 
     mockFindUnique.mockResolvedValue(mockTemplate);
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/templates?id=test-template-id'
     );
 
@@ -487,7 +508,7 @@ describe('DELETE /api/templates', () => {
       new Error('Database connection error')
     );
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/templates?id=test-template-id'
     );
 

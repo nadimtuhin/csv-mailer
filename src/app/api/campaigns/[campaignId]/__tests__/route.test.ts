@@ -7,6 +7,7 @@ jest.mock('@/lib/prisma', () => ({
   __esModule: true,
   default: {
     campaign: {
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
     },
@@ -14,8 +15,20 @@ jest.mock('@/lib/prisma', () => ({
 }));
 
 // Get typed mocks
+const mockFindFirst = jest.mocked(prisma.campaign.findFirst);
 const mockFindUnique = jest.mocked(prisma.campaign.findUnique);
 const mockUpdate = jest.mocked(prisma.campaign.update);
+
+// Test organization ID (multi-tenancy)
+const TEST_ORG_ID = 'test-org-123';
+
+// Helper to create NextRequest with required headers for multi-tenancy
+function createAuthenticatedRequest(url: string, options?: RequestInit): NextRequest {
+  const request = new NextRequest(url, options);
+  // Mock the middleware-injected header
+  request.headers.set('x-organization-id', TEST_ORG_ID);
+  return request;
+}
 
 describe('GET /api/campaigns/[campaignId]', () => {
   beforeEach(() => {
@@ -38,6 +51,7 @@ describe('GET /api/campaigns/[campaignId]', () => {
       templateId: 'template-id',
       pdfTemplatePath: null,
       scheduledAt: null,
+      organizationId: TEST_ORG_ID,
       createdAt: new Date('2024-01-01'),
       updatedAt: new Date('2024-01-02'),
       isArchived: false,
@@ -66,9 +80,9 @@ describe('GET /api/campaigns/[campaignId]', () => {
       ],
     };
 
-    mockFindUnique.mockResolvedValue(mockCampaign);
+    mockFindFirst.mockResolvedValue(mockCampaign);
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/campaigns/campaign-id'
     );
     const context = { params: { campaignId: 'campaign-id' } };
@@ -80,8 +94,8 @@ describe('GET /api/campaigns/[campaignId]', () => {
     expect(data.id).toBe('campaign-id');
     expect(data.name).toBe('Test Campaign');
     expect(data.recipients).toHaveLength(3);
-    expect(mockFindUnique).toHaveBeenCalledWith({
-      where: { id: 'campaign-id' },
+    expect(mockFindFirst).toHaveBeenCalledWith({
+      where: { id: 'campaign-id', organizationId: TEST_ORG_ID },
       include: {
         recipients: {
           orderBy: [{ status: 'asc' }, { recipientEmail: 'asc' }],
@@ -98,7 +112,7 @@ describe('GET /api/campaigns/[campaignId]', () => {
   });
 
   it('should return 400 if campaignId is missing', async () => {
-    const request = new NextRequest('http://localhost:3000/api/campaigns/');
+    const request = createAuthenticatedRequest('http://localhost:3000/api/campaigns/');
     const context = { params: { campaignId: '' } };
 
     const response = await GET(request, context);
@@ -106,13 +120,13 @@ describe('GET /api/campaigns/[campaignId]', () => {
 
     expect(response.status).toBe(400);
     expect(data.message).toBe('Campaign ID is required.');
-    expect(mockFindUnique).not.toHaveBeenCalled();
+    expect(mockFindFirst).not.toHaveBeenCalled();
   });
 
   it('should return 404 if campaign is not found', async () => {
-    mockFindUnique.mockResolvedValue(null);
+    mockFindFirst.mockResolvedValue(null);
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/campaigns/nonexistent-id'
     );
     const context = { params: { campaignId: 'nonexistent-id' } };
@@ -122,16 +136,16 @@ describe('GET /api/campaigns/[campaignId]', () => {
 
     expect(response.status).toBe(404);
     expect(data.message).toBe('Campaign not found.');
-    expect(mockFindUnique).toHaveBeenCalledWith({
-      where: { id: 'nonexistent-id' },
+    expect(mockFindFirst).toHaveBeenCalledWith({
+      where: { id: 'nonexistent-id', organizationId: TEST_ORG_ID },
       include: expect.any(Object),
     });
   });
 
   it('should return 500 if there is a database error', async () => {
-    mockFindUnique.mockRejectedValue(new Error('Database connection error'));
+    mockFindFirst.mockRejectedValue(new Error('Database connection error'));
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/campaigns/campaign-id'
     );
     const context = { params: { campaignId: 'campaign-id' } };
@@ -152,6 +166,7 @@ describe('PATCH /api/campaigns/[campaignId]', () => {
   it('should archive a campaign successfully', async () => {
     const mockCampaign = {
       isArchived: false,
+      organizationId: TEST_ORG_ID,
     };
 
     mockFindUnique.mockResolvedValue(mockCampaign);
@@ -170,12 +185,13 @@ describe('PATCH /api/campaigns/[campaignId]', () => {
       templateId: null,
       pdfTemplatePath: null,
       scheduledAt: null,
+      organizationId: TEST_ORG_ID,
       createdAt: new Date(),
       updatedAt: new Date(),
       isArchived: true,
     });
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/campaigns/campaign-id',
       { method: 'PATCH' }
     );
@@ -188,7 +204,7 @@ describe('PATCH /api/campaigns/[campaignId]', () => {
     expect(data.message).toBe('Campaign archived successfully.');
     expect(mockFindUnique).toHaveBeenCalledWith({
       where: { id: 'campaign-id' },
-      select: { isArchived: true },
+      select: { isArchived: true, organizationId: true },
     });
     expect(mockUpdate).toHaveBeenCalledWith({
       where: { id: 'campaign-id' },
@@ -197,7 +213,7 @@ describe('PATCH /api/campaigns/[campaignId]', () => {
   });
 
   it('should return 400 if campaignId is missing', async () => {
-    const request = new NextRequest('http://localhost:3000/api/campaigns/', {
+    const request = createAuthenticatedRequest('http://localhost:3000/api/campaigns/', {
       method: 'PATCH',
     });
     const context = { params: { campaignId: '' } };
@@ -213,7 +229,7 @@ describe('PATCH /api/campaigns/[campaignId]', () => {
   it('should return 404 if campaign is not found', async () => {
     mockFindUnique.mockResolvedValue(null);
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/campaigns/nonexistent-id',
       { method: 'PATCH' }
     );
@@ -230,11 +246,12 @@ describe('PATCH /api/campaigns/[campaignId]', () => {
   it('should return 200 if campaign is already archived', async () => {
     const mockCampaign = {
       isArchived: true,
+      organizationId: TEST_ORG_ID,
     };
 
     mockFindUnique.mockResolvedValue(mockCampaign);
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/campaigns/campaign-id',
       { method: 'PATCH' }
     );
@@ -251,7 +268,7 @@ describe('PATCH /api/campaigns/[campaignId]', () => {
   it('should return 500 if there is a database error', async () => {
     mockFindUnique.mockRejectedValue(new Error('Database connection error'));
 
-    const request = new NextRequest(
+    const request = createAuthenticatedRequest(
       'http://localhost:3000/api/campaigns/campaign-id',
       { method: 'PATCH' }
     );
