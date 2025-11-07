@@ -18,27 +18,94 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Define public paths that don't require authentication
-  // Added '/' to the public paths
-  const publicPaths = ['/', '/login', '/signup', '/api/auth/login', '/api/auth/signup'];
+  const publicPaths = [
+    '/',
+    '/login',
+    '/signup',
+    '/api/auth/login',
+    '/api/auth/signup',
+    '/api/auth/logout',
+    '/api/auth/google',
+    '/api/auth/google/callback',
+  ];
 
-  // Allow requests to public paths and Next.js internal paths/static files
+  // Define protected API routes that require authentication
+  const protectedApiPrefixes = [
+    '/api/templates',
+    '/api/campaigns',
+    '/api/pdf',
+    '/api/send-emails',
+  ];
+
+  // Check if this is a protected API route
+  const isProtectedApi = protectedApiPrefixes.some((prefix) =>
+    pathname.startsWith(prefix)
+  );
+
+  // Allow public paths and Next.js internal paths/static files
   if (
-    pathname === '/' || // Explicitly allow the root path
-    publicPaths.some(path => pathname.startsWith(path) && path !== '/') || // Check other public paths (excluding root)
+    publicPaths.some((path) => pathname === path || pathname.startsWith(path)) ||
     pathname.startsWith('/_next/') || // Next.js internal assets
-    pathname.startsWith('/api/') && !publicPaths.some(path => pathname.startsWith(path)) || // Allow non-auth API routes
-    /\.(.*)$/.test(pathname) // Allow requests for static files (e.g., .css, .js, .png)
+    /\.(.*)$/.test(pathname) // Static files (e.g., .css, .js, .png)
   ) {
     return NextResponse.next();
   }
 
-  // Get the token from the cookie
+  // For protected API routes, check for valid JWT token
+  if (isProtectedApi) {
+    const token = request.cookies.get(COOKIE_NAME)?.value;
+
+    if (!token) {
+      return NextResponse.json(
+        { error: 'Authentication required. Please login.' },
+        { status: 401 }
+      );
+    }
+
+    try {
+      // Verify the token
+      const secretKey = await getSecretKey();
+      const { payload } = await jwtVerify(token, secretKey);
+
+      // Ensure organizationId is present in the JWT (required for multi-tenancy)
+      if (!payload.organizationId) {
+        return NextResponse.json(
+          { error: 'Invalid token: missing organization. Please login again.' },
+          { status: 401 }
+        );
+      }
+
+      // Add user info and organizationId to headers for downstream use
+      const requestHeaders = new Headers(request.headers);
+      requestHeaders.set('x-user-id', payload.userId as string);
+      requestHeaders.set('x-user-email', payload.email as string);
+      requestHeaders.set('x-organization-id', payload.organizationId as string);
+
+      return NextResponse.next({
+        request: {
+          headers: requestHeaders,
+        },
+      });
+    } catch (error) {
+      console.error('JWT Verification Error:', error);
+
+      // Return 401 for invalid token on API routes
+      const response = NextResponse.json(
+        { error: 'Invalid or expired token. Please login again.' },
+        { status: 401 }
+      );
+      response.cookies.set(COOKIE_NAME, '', { maxAge: -1, path: '/' });
+      return response;
+    }
+  }
+
+  // For protected page routes (non-API), check for valid JWT token
   const token = request.cookies.get(COOKIE_NAME)?.value;
 
   if (!token) {
-    // Redirect to login if no token found for a protected route
+    // Redirect to login if no token found for a protected page route
     const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('redirectedFrom', pathname); // Optional: tell login where user was going
+    loginUrl.searchParams.set('redirectedFrom', pathname);
     return NextResponse.redirect(loginUrl);
   }
 
@@ -52,10 +119,9 @@ export async function middleware(request: NextRequest) {
   } catch (error) {
     console.error('JWT Verification Error:', error);
     // Token is invalid or expired, redirect to login
-    // Clear the invalid cookie before redirecting
     const loginUrl = new URL('/login', request.url);
     const response = NextResponse.redirect(loginUrl);
-    response.cookies.set(COOKIE_NAME, '', { maxAge: -1, path: '/' }); // Clear the cookie
+    response.cookies.set(COOKIE_NAME, '', { maxAge: -1, path: '/' });
     return response;
   }
 }
