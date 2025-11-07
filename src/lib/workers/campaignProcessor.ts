@@ -7,6 +7,10 @@ import { mergeDataIntoTemplate } from '@/utils/templateHelper';
 import type { Campaign, CampaignRecipient } from '@prisma/client';
 import redis from '@/lib/redis';
 import { ProcessCampaignJobData, enqueueCampaignProcessing } from '@/lib/queues/campaignQueue';
+import {
+  generateUnsubscribeToken,
+  generateUnsubscribeLink,
+} from '@/utils/unsubscribeToken';
 
 // Ensure SendGrid API Key is set
 if (!process.env.SENDGRID_API_KEY) {
@@ -153,6 +157,61 @@ async function processCampaignJob(job: Job<ProcessCampaignJobData>) {
       take: 100, // Process in batches of 100
     });
 
+    // 3.5. Filter out unsubscribed recipients
+    if (recipientsToProcess.length > 0) {
+      const emails = recipientsToProcess.map((r) => r.recipientEmail);
+
+      // Fetch all unsubscribed emails in this batch
+      const unsubscribedRecords = await prisma.unsubscribe.findMany({
+        where: {
+          email: { in: emails },
+          organizationId: organizationId,
+        },
+        select: { email: true },
+      });
+
+      const unsubscribedEmails = new Set(unsubscribedRecords.map((u) => u.email));
+
+      // Mark unsubscribed recipients as 'skipped'
+      const unsubscribedRecipientIds = recipientsToProcess
+        .filter((r) => unsubscribedEmails.has(r.recipientEmail))
+        .map((r) => r.id);
+
+      if (unsubscribedRecipientIds.length > 0) {
+        await prisma.campaignRecipient.updateMany({
+          where: { id: { in: unsubscribedRecipientIds } },
+          data: {
+            status: 'skipped',
+            errorMessage: 'Recipient has unsubscribed',
+            processedAt: new Date(),
+          },
+        });
+
+        // Update campaign skipped count
+        await prisma.campaign.update({
+          where: { id: campaignId },
+          data: { skippedCount: { increment: unsubscribedRecipientIds.length } },
+        });
+
+        console.log(
+          `⏭️  Skipped ${unsubscribedRecipientIds.length} unsubscribed recipients in campaign ${campaignId}`
+        );
+      }
+
+      // Filter out the unsubscribed recipients from processing
+      const filteredRecipients = recipientsToProcess.filter(
+        (r) => !unsubscribedEmails.has(r.recipientEmail)
+      );
+
+      if (filteredRecipients.length === 0) {
+        console.log(`All ${recipientsToProcess.length} recipients in batch were unsubscribed.`);
+        // Continue to check if campaign is complete
+      } else {
+        // Replace recipientsToProcess with filtered list
+        recipientsToProcess.splice(0, recipientsToProcess.length, ...filteredRecipients);
+      }
+    }
+
     if (recipientsToProcess.length === 0) {
       const message = `No ${statusToProcess} recipients found for campaign ${campaignId}.`;
       console.log(message);
@@ -260,6 +319,34 @@ async function processCampaignJob(job: Job<ProcessCampaignJobData>) {
             });
           }
 
+          // --- Generate Unsubscribe Link (CAN-SPAM compliance) ---
+          // Check if unsubscribe record exists, if not create one
+          let unsubscribeRecord = await prisma.unsubscribe.findUnique({
+            where: {
+              email_organizationId: {
+                email: recipient.recipientEmail,
+                organizationId,
+              },
+            },
+          });
+
+          if (!unsubscribeRecord) {
+            // Create unsubscribe token for this email
+            const token = generateUnsubscribeToken();
+            unsubscribeRecord = await prisma.unsubscribe.create({
+              data: {
+                email: recipient.recipientEmail,
+                organizationId,
+                token,
+              },
+            });
+          }
+
+          const unsubscribeLink = generateUnsubscribeLink(
+            recipient.recipientEmail,
+            unsubscribeRecord.token
+          );
+
           const msg = {
             to: recipient.recipientEmail,
             from: { email: campaign.fromEmail, name: campaign.fromName || undefined },
@@ -267,6 +354,10 @@ async function processCampaignJob(job: Job<ProcessCampaignJobData>) {
             subject: campaign.subject,
             html: personalizedHtml,
             attachments: attachments,
+            headers: {
+              'List-Unsubscribe': `<${unsubscribeLink}>`,
+              'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+            },
           };
 
           // --- Send Email ---

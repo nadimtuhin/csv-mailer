@@ -19,9 +19,10 @@ model Organization {
   updatedAt DateTime @updatedAt
 
   // Relations
-  users     UserOrganization[]
-  templates Template[]
-  campaigns Campaign[]
+  users        UserOrganization[]
+  templates    Template[]
+  campaigns    Campaign[]
+  unsubscribes Unsubscribe[]
 }
 
 // Join table for User-Organization many-to-many relationship
@@ -126,4 +127,23 @@ model User {
 
   // Relations - Multi-tenancy
   organizations UserOrganization[] // Users can belong to multiple organizations
+}
+
+// Model for tracking unsubscribe requests (CAN-SPAM compliance)
+model Unsubscribe {
+  id             String   @id @default(cuid())
+  email          String   // Email address that unsubscribed
+  organizationId String   // Organization they unsubscribed from
+  reason         String?  // Optional reason for unsubscribing
+  token          String   @unique // Unique token for verification
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([email, organizationId]) // An email can only unsubscribe once per organization
+  @@index([email])
+  @@index([organizationId])
+  @@index([token])
 }
