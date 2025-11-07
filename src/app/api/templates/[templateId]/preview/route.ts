@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 
 /**
  * POST /api/templates/[templateId]/preview
@@ -59,7 +59,7 @@ export async function POST(
     // Matches {{variableName}} patterns
     const variableRegex = /\{\{(\w+)\}\}/g;
 
-    renderedHtml = renderedHtml.replace(variableRegex, (match, variableName) => {
+    renderedHtml = renderedHtml.replace(variableRegex, (match: string, variableName: string) => {
       // Check if sample data has this variable
       if (variableName in sampleData) {
         const value = sampleData[variableName];

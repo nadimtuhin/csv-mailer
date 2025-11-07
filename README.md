@@ -16,6 +16,9 @@ A powerful, multi-tenant email campaign platform built with Next.js that enables
 - **Campaign Scheduling**: Schedule campaigns for future delivery
 - **Campaign Tracking**: Monitor sent, failed, and skipped email counts
 - **CSV Import**: Upload recipient lists with custom fields via CSV
+- **Background Job Processing**: Asynchronous email sending with BullMQ and Redis
+- **Automatic Unsubscribe**: CAN-SPAM compliant unsubscribe functionality
+- **Template Preview**: Preview email templates with sample data
 
 ### Multi-Tenancy
 
@@ -46,6 +49,7 @@ A powerful, multi-tenant email campaign platform built with Next.js that enables
 - **Database**: SQLite with Prisma ORM
 - **Authentication**: JWT (jose) + bcrypt
 - **Email Service**: SendGrid
+- **Background Jobs**: BullMQ + Redis
 - **Rich Text Editor**: TipTap
 - **OAuth**: Google OAuth 2.0 (googleapis)
 - **File Processing**:
@@ -53,6 +57,7 @@ A powerful, multi-tenant email campaign platform built with Next.js that enables
   - DOCX: mammoth
   - CSV: papaparse
 - **Validation**: Zod
+- **Sanitization**: DOMPurify (XSS prevention)
 - **Styling**: Tailwind CSS 4
 - **Testing**: Jest + React Testing Library
 
@@ -62,6 +67,7 @@ A powerful, multi-tenant email campaign platform built with Next.js that enables
 
 - Node.js 20 or higher
 - npm, yarn, pnpm, or bun
+- Redis (for background job processing)
 - SendGrid API key (for sending emails)
 - Google OAuth credentials (optional, for Google sign-in)
 
@@ -109,12 +115,41 @@ npx prisma generate
 npx prisma db push
 ```
 
-5. Run the development server:
+5. Install and start Redis (for background jobs):
+
+**macOS (using Homebrew):**
+```bash
+brew install redis
+brew services start redis
+```
+
+**Ubuntu/Debian:**
+```bash
+sudo apt-get install redis-server
+sudo systemctl start redis-server
+```
+
+**Docker:**
+```bash
+docker run -d -p 6379:6379 redis:7-alpine
+```
+
+6. Run the development server:
 ```bash
 npm run dev
 ```
 
-6. Open [http://localhost:3000](http://localhost:3000) in your browser
+7. In a separate terminal, start the background workers:
+```bash
+npm run workers
+```
+
+This starts three workers:
+- **Email Worker**: Processes individual email sending jobs
+- **Campaign Scheduler**: Processes campaigns and queues emails
+- **Cron Scheduler**: Checks for scheduled campaigns every minute
+
+8. Open [http://localhost:3000](http://localhost:3000) in your browser
 
 ### Running Tests
 
@@ -278,6 +313,63 @@ See `.env.example` for all available configuration options.
 - `GOOGLE_CLIENT_ID` - Google OAuth client ID
 - `GOOGLE_CLIENT_SECRET` - Google OAuth client secret
 - `GOOGLE_REDIRECT_URI` - OAuth callback URL
+- `REDIS_URL` - Redis connection URL (defaults to redis://localhost:6379)
+
+## Background Jobs
+
+CSV Mailer uses BullMQ and Redis for background job processing, enabling:
+
+### Features
+
+- **Asynchronous Email Sending**: Emails are queued and sent in the background
+- **Automatic Retries**: Failed emails retry with exponential backoff (5 attempts)
+- **Rate Limiting**: Respects SendGrid rate limits (100 emails/second)
+- **Scheduled Campaigns**: Automatic processing of scheduled campaigns
+- **Concurrent Processing**: Multiple workers process jobs in parallel
+- **Unsubscribe Filtering**: Automatically skips unsubscribed recipients
+
+### Workers
+
+**Email Processor** (`worker:email`)
+- Processes individual email sending jobs
+- Concurrency: 10 emails at a time
+- Rate limit: 100 jobs per second
+- Handles PDF attachments and template personalization
+- Adds unsubscribe links to all emails
+
+**Campaign Scheduler** (`worker:scheduler`)
+- Processes campaigns and queues email jobs
+- Fetches recipients in batches of 1000
+- Updates campaign status (processing → completed)
+- Cleans up temporary PDF files
+
+**Cron Scheduler** (`worker:cron`)
+- Runs every 60 seconds
+- Checks for scheduled campaigns
+- Automatically queues campaigns when scheduled time is reached
+
+### Running Workers
+
+```bash
+# Run all workers together
+npm run workers
+
+# Or run individually
+npm run worker:email       # Email processor
+npm run worker:scheduler   # Campaign scheduler
+npm run worker:cron        # Scheduled campaign checker
+```
+
+### Monitoring
+
+You can monitor queue status via Redis CLI:
+
+```bash
+redis-cli
+> KEYS bull:*
+> LLEN bull:email-campaign:waiting
+> LLEN bull:email-campaign:active
+```
 
 ## Development
 
@@ -321,24 +413,26 @@ Docker support is planned for easy self-hosting.
 
 ## Known Limitations
 
-1. **No Background Jobs**: Emails are sent synchronously (can timeout for large campaigns)
-2. **No Rate Limiting**: API endpoints not rate-limited
-3. **No Email Tracking**: No open/click tracking
-4. **Manual Campaign Processing**: Scheduled campaigns require manual trigger
+1. **No API Rate Limiting**: API endpoints not rate-limited (open to abuse)
+2. **No Email Tracking**: No open/click tracking (SendGrid webhooks not implemented)
+3. **Redis Dependency**: Background jobs require Redis to be running
 
 See [NEXT_STEPS.md](NEXT_STEPS.md) for planned improvements.
 
 ## Roadmap
 
 ### Recently Completed
+- [x] Background job system (BullMQ + Redis)
 - [x] Unsubscribe functionality (CAN-SPAM compliance)
 - [x] Input sanitization (XSS prevention)
 - [x] Template preview API
+- [x] Scheduled campaign automation
+- [x] Automatic retry for failed emails
 
 ### Immediate Priorities
-- [ ] Background job system (BullMQ + Redis)
-- [ ] Email delivery tracking
-- [ ] Rate limiting
+- [ ] Email delivery tracking (SendGrid webhooks)
+- [ ] API rate limiting
+- [ ] Queue monitoring dashboard
 
 ### Future Features
 - [ ] Template versioning

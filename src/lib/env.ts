@@ -19,6 +19,9 @@ const envSchema = z.object({
   // Email Service
   SENDGRID_API_KEY: z.string().min(1, 'SENDGRID_API_KEY is required'),
 
+  // Redis (optional - for background jobs)
+  REDIS_URL: z.string().optional().default('redis://localhost:6379'),
+
   // Google OAuth (optional)
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
