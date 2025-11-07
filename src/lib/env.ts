@@ -18,6 +18,7 @@ const envSchema = z.object({
 
   // Email Service
   SENDGRID_API_KEY: z.string().min(1, 'SENDGRID_API_KEY is required'),
+  SENDGRID_WEBHOOK_SECRET: z.string().optional(), // For webhook signature verification
   EMAIL_PROVIDER: z
     .enum(['sendgrid', 'ses', 'fake'])
     .optional()

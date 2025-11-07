@@ -102,11 +102,52 @@ model CampaignRecipient {
   errorMessage String?  // Store error message on failure
   processedAt DateTime? // Timestamp when processed
 
+  // Email tracking fields
+  messageId     String?   // Email provider's message ID
+  deliveredAt   DateTime? // When email was delivered
+  openedAt      DateTime? // First time email was opened
+  clickedAt     DateTime? // First time link was clicked
+  bouncedAt     DateTime? // When email bounced
+  bounceReason  String?   // Bounce reason from provider
+  openCount     Int       @default(0) // Number of times opened
+  clickCount    Int       @default(0) // Number of times clicked
+
   // Store the specific data used for this recipient (optional, for retry/debugging)
   // recipientDataJson String?
 
+  // Relations
+  emailEvents EmailEvent[] // Relation to email events
+
   @@index([campaignId]) // Index for faster querying by campaign
   @@index([status])     // Index for finding pending/failed recipients
+  @@index([messageId])  // Index for webhook lookups
+}
+
+// Model for tracking email events from provider webhooks (SendGrid, SES, etc.)
+model EmailEvent {
+  id          String   @id @default(cuid())
+  recipientId String
+  recipient   CampaignRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  eventType   String   // delivered, open, click, bounce, dropped, deferred, etc.
+  timestamp   DateTime // When the event occurred (from provider)
+
+  // Additional event data
+  messageId   String?  // Provider's message ID
+  url         String?  // For click events
+  userAgent   String?  // For open/click events
+  ip          String?  // For open/click events
+  reason      String?  // For bounce/dropped events
+
+  // Raw webhook data for debugging
+  rawData     String?  // JSON string of the webhook payload
+
+  createdAt   DateTime @default(now())
+
+  @@index([recipientId])
+  @@index([eventType])
+  @@index([messageId])
+  @@index([timestamp])
 }
 
 // Define the User model for authentication

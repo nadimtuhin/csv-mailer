@@ -166,11 +166,12 @@ async function processEmailJob(job: Job<EmailJobData>): Promise<void> {
       `[Worker] Email sent successfully to ${recipientEmail} (Message ID: ${result.messageId})`
     );
 
-    // Update recipient status to sent
+    // Update recipient status to sent with message ID
     await prisma.campaignRecipient.update({
       where: { id: recipientId },
       data: {
         status: 'sent',
+        messageId: result.messageId || null,
         errorMessage: null,
         processedAt: new Date(),
       },

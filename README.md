@@ -15,6 +15,7 @@ A powerful, multi-tenant email campaign platform built with Next.js that enables
   - Variable substitution (e.g., `{{name}}`, `{{email}}`)
 - **Campaign Scheduling**: Schedule campaigns for future delivery
 - **Campaign Tracking**: Monitor sent, failed, and skipped email counts
+- **Email Tracking**: Real-time tracking of email delivery, opens, clicks, and bounces via webhooks
 - **CSV Import**: Upload recipient lists with custom fields via CSV
 - **Background Job Processing**: Asynchronous email sending with BullMQ and Redis
 - **Automatic Unsubscribe**: CAN-SPAM compliant unsubscribe functionality
@@ -488,6 +489,169 @@ const result = await adapter.send({
 console.log(result.success, result.messageId);
 ```
 
+## Email Tracking
+
+CSV Mailer provides comprehensive email tracking through SendGrid webhooks, allowing you to monitor email delivery, opens, clicks, and bounces in real-time.
+
+### Tracked Events
+
+| Event | Description | Tracked Data |
+|-------|-------------|--------------|
+| **Delivered** | Email successfully delivered to recipient | Delivery timestamp |
+| **Open** | Recipient opened the email | First open time, open count, user agent, IP |
+| **Click** | Recipient clicked a link | First click time, click count, clicked URL, user agent, IP |
+| **Bounce** | Email bounced (hard or soft) | Bounce timestamp, bounce reason |
+| **Dropped** | SendGrid dropped the email | Drop timestamp, reason |
+| **Spam Report** | Recipient marked as spam | Report timestamp |
+| **Unsubscribe** | Recipient unsubscribed | Unsubscribe timestamp |
+
+### Setup
+
+#### 1. Configure SendGrid Event Webhook
+
+1. Log in to [SendGrid](https://app.sendgrid.com/)
+2. Navigate to **Settings** → **Mail Settings** → **Event Webhook**
+3. Enable **Event Webhook**
+4. Set **HTTP POST URL** to: `https://your-domain.com/api/webhooks/sendgrid`
+5. Select events to track:
+   - ✅ Delivered
+   - ✅ Open
+   - ✅ Click
+   - ✅ Bounce
+   - ✅ Dropped
+   - ✅ Spam Report
+   - ✅ Unsubscribe (optional)
+6. **Enable Signature Verification**
+7. Copy the **Verification Key**
+
+#### 2. Configure Environment Variables
+
+Add the webhook verification key to your `.env`:
+
+```env
+SENDGRID_WEBHOOK_SECRET="your-verification-key-from-sendgrid"
+```
+
+**Important**: Without this key, webhook signature verification is disabled, which is not recommended for production.
+
+#### 3. Verify Webhook
+
+Test the webhook endpoint:
+
+```bash
+curl https://your-domain.com/api/webhooks/sendgrid
+```
+
+Response:
+```json
+{
+  "status": "ok",
+  "message": "SendGrid webhook endpoint is active",
+  "signatureVerification": "enabled"
+}
+```
+
+### Database Schema
+
+Email tracking data is stored in two models:
+
+**CampaignRecipient** (updated with tracking fields):
+- `messageId`: Email provider's message ID
+- `deliveredAt`: When email was delivered
+- `openedAt`: First time email was opened
+- `clickedAt`: First time link was clicked
+- `bouncedAt`: When email bounced
+- `bounceReason`: Bounce reason from provider
+- `openCount`: Number of times opened
+- `clickCount`: Number of times clicked
+
+**EmailEvent** (detailed event log):
+- `eventType`: Event name (delivered, open, click, bounce, etc.)
+- `timestamp`: When the event occurred
+- `messageId`: Provider's message ID
+- `url`: Clicked URL (for click events)
+- `userAgent`: Browser/client (for open/click events)
+- `ip`: IP address (for open/click events)
+- `reason`: Bounce/drop reason
+- `rawData`: Complete webhook payload (JSON)
+
+### Querying Tracking Data
+
+Retrieve tracking data via the API or database:
+
+```typescript
+// Get recipient with tracking data
+const recipient = await prisma.campaignRecipient.findUnique({
+  where: { id: recipientId },
+  include: {
+    emailEvents: {
+      orderBy: { timestamp: 'desc' },
+    },
+  },
+});
+
+// Campaign statistics
+const campaign = await prisma.campaign.findUnique({
+  where: { id: campaignId },
+  include: {
+    recipients: {
+      select: {
+        status: true,
+        deliveredAt: true,
+        openedAt: true,
+        clickedAt: true,
+        bouncedAt: true,
+        openCount: true,
+        clickCount: true,
+      },
+    },
+  },
+});
+
+// Calculate metrics
+const delivered = campaign.recipients.filter(r => r.deliveredAt).length;
+const opened = campaign.recipients.filter(r => r.openedAt).length;
+const clicked = campaign.recipients.filter(r => r.clickedAt).length;
+const bounced = campaign.recipients.filter(r => r.bouncedAt).length;
+
+console.log({
+  deliveryRate: (delivered / campaign.totalRecipients * 100).toFixed(2) + '%',
+  openRate: (opened / delivered * 100).toFixed(2) + '%',
+  clickRate: (clicked / delivered * 100).toFixed(2) + '%',
+  bounceRate: (bounced / campaign.totalRecipients * 100).toFixed(2) + '%',
+});
+```
+
+### Security
+
+**Webhook Signature Verification**: All webhook requests are verified using HMAC-SHA256 signatures to ensure they originate from SendGrid.
+
+```typescript
+// Automatic verification in webhook handler
+const signature = request.headers.get('x-twilio-email-event-webhook-signature');
+const timestamp = request.headers.get('x-twilio-email-event-webhook-timestamp');
+
+// Computes: HMAC-SHA256(timestamp + payload, webhook_secret)
+verifyWebhookSignature(payload, signature, timestamp);
+```
+
+**Best Practices**:
+- Always configure `SENDGRID_WEBHOOK_SECRET` in production
+- Use HTTPS for webhook URL
+- Monitor webhook health via logs
+- Set up alerts for failed webhook processing
+
+### AWS SES Tracking
+
+AWS SES uses SNS (Simple Notification Service) for event notifications. To implement SES tracking:
+
+1. Configure SNS topic in AWS
+2. Subscribe your webhook endpoint to the SNS topic
+3. Create a similar webhook handler at `/api/webhooks/ses`
+4. Parse SNS message format (different from SendGrid)
+
+*(SES webhook handler coming soon)*
+
 ## API Rate Limiting
 
 CSV Mailer supports optional API rate limiting using Upstash Redis to protect against abuse and ensure fair usage.
@@ -596,8 +760,7 @@ Docker support is planned for easy self-hosting.
 
 ## Known Limitations
 
-1. **No Email Tracking**: No open/click tracking (SendGrid webhooks not implemented)
-2. **Redis Dependency**: Background jobs require Redis to be running
+1. **Redis Dependency**: Background jobs require Redis to be running
 
 See [NEXT_STEPS.md](NEXT_STEPS.md) for planned improvements.
 
@@ -610,11 +773,14 @@ See [NEXT_STEPS.md](NEXT_STEPS.md) for planned improvements.
 - [x] Template preview API
 - [x] Scheduled campaign automation
 - [x] Automatic retry for failed emails
+- [x] Pluggable email adapters (SendGrid, AWS SES, Fake)
+- [x] API rate limiting with Upstash Redis
+- [x] Email tracking with SendGrid webhooks
 
 ### Immediate Priorities
-- [ ] Email delivery tracking (SendGrid webhooks)
-- [ ] API rate limiting
 - [ ] Queue monitoring dashboard
+- [ ] Error monitoring (Sentry)
+- [ ] Structured logging (Pino)
 
 ### Future Features
 - [ ] Template versioning
