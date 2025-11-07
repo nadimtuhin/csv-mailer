@@ -127,3 +127,19 @@ model User {
   // Relations - Multi-tenancy
   organizations UserOrganization[] // Users can belong to multiple organizations
 }
+
+// Unsubscribe list for CAN-SPAM compliance
+model Unsubscribe {
+  id             String   @id @default(cuid())
+  email          String
+  organizationId String
+  createdAt      DateTime @default(now())
+
+  // Optional fields for tracking
+  reason         String?  // Why they unsubscribed
+  campaignId     String?  // Which campaign triggered the unsubscribe
+
+  @@unique([email, organizationId]) // One unsubscribe per email per org
+  @@index([organizationId, email]) // Fast lookups
+  @@index([email]) // For cross-org checks
+}

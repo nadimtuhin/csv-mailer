@@ -4,6 +4,7 @@ import path from 'path'; // Keep for path validation if needed
 import os from 'os';   // Keep for path validation if needed
 import { NextRequest } from 'next/server'; // Import NextRequest
 import fs from 'fs/promises'; // Keep for path validation if needed
+import { sanitizeHTML, sanitizeEmailSubject, sanitizeEmail, sanitizeName, sanitizePlainText } from '@/lib/sanitize';
 
 // Interface for the request body to create a campaign
 interface RecipientData {
@@ -153,16 +154,23 @@ export async function POST(request: Request) {
 
 
     // --- Create Campaign in Database ---
+    // Sanitize inputs to prevent XSS
+    const sanitizedSubject = sanitizeEmailSubject(subject);
+    const sanitizedFromEmail = sanitizeEmail(fromEmail);
+    const sanitizedReplyToEmail = sanitizeEmail(replyToEmail);
+    const sanitizedFromName = fromName ? sanitizePlainText(fromName, 100) : undefined;
+    const sanitizedCampaignName = campaignName ? sanitizeName(campaignName) : `Campaign ${new Date().toISOString()}`;
+
     const initialStatus = scheduledAt ? 'scheduled' : 'pending'; // Set initial status based on scheduling
     const campaign = await prisma.campaign.create({
       data: {
-        name: campaignName || `Campaign ${new Date().toISOString()}`, // Default name
+        name: sanitizedCampaignName, // Use sanitized name
         status: initialStatus, // Use determined initial status
         totalRecipients: recipients.length,
-        subject: subject,
-        fromEmail: fromEmail,
-        fromName: fromName,
-        replyToEmail: replyToEmail,
+        subject: sanitizedSubject,
+        fromEmail: sanitizedFromEmail,
+        fromName: sanitizedFromName,
+        replyToEmail: sanitizedReplyToEmail,
         templateId: templateId, // Store template ID if available
         pdfTemplatePath: validatedPdfPath, // Store validated path
         scheduledAt: scheduledAt, // Store the Date object or null
