@@ -5,6 +5,7 @@ import os from 'os';   // Keep for path validation if needed
 import { NextRequest } from 'next/server'; // Import NextRequest
 import fs from 'fs/promises'; // Keep for path validation if needed
 import { sanitizeHTML, sanitizeEmailSubject, sanitizeEmail, sanitizeName, sanitizePlainText } from '@/lib/sanitize';
+import { applyApiRateLimit } from '@/lib/ratelimit';
 
 // Interface for the request body to create a campaign
 interface RecipientData {
@@ -26,6 +27,12 @@ interface CreateCampaignRequestBody {
 
 // GET /api/campaigns - List non-archived campaigns by default, supports limit (tenant-scoped)
 export async function GET(request: NextRequest) {
+    // Apply rate limiting (100 requests per minute)
+    const rateLimitResponse = await applyApiRateLimit(request);
+    if (rateLimitResponse) {
+        return rateLimitResponse;
+    }
+
     const { searchParams } = new URL(request.url);
     const includeArchived = searchParams.get('includeArchived') === 'true';
     const limitParam = searchParams.get('limit');
@@ -76,7 +83,13 @@ export async function GET(request: NextRequest) {
 
 
 // POST /api/campaigns - Create a new campaign and queue recipients (tenant-scoped)
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  // Apply rate limiting (100 requests per minute)
+  const rateLimitResponse = await applyApiRateLimit(request);
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
   let validatedPdfPath: string | null = null; // Declare outside try block
 
   // Get organizationId from middleware-set header

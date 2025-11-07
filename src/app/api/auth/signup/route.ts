@@ -1,10 +1,17 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcrypt';
 import prisma from '@/lib/prisma';
+import { applyAuthRateLimit } from '@/lib/ratelimit';
 
 const SALT_ROUNDS = 10; // Standard practice for bcrypt salt rounds
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  // Apply rate limiting (5 requests per 15 minutes)
+  const rateLimitResponse = await applyAuthRateLimit(request);
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
   try {
     const body = await request.json();
     const { email, password } = body;

@@ -22,6 +22,10 @@ const envSchema = z.object({
   // Redis (optional - for background jobs)
   REDIS_URL: z.string().optional().default('redis://localhost:6379'),
 
+  // Upstash Redis (optional - for rate limiting)
+  UPSTASH_REDIS_REST_URL: z.string().url().optional(),
+  UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
+
   // Google OAuth (optional)
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),

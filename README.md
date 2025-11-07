@@ -35,6 +35,12 @@ A powerful, multi-tenant email campaign platform built with Next.js that enables
 - **CSRF Protection**: State parameter validation for OAuth flows
 - **Tenant Isolation**: Middleware enforces organization-level access control
 - **Email Verification**: OAuth requires verified email addresses
+- **Input Sanitization**: XSS prevention with DOMPurify
+- **API Rate Limiting**: Upstash Redis-based rate limiting (optional)
+  - Auth endpoints: 5 requests per 15 minutes
+  - Email processing: 10 requests per minute per organization
+  - General API: 100 requests per minute
+  - File uploads: 20 uploads per hour
 
 ### API Features
 
@@ -42,6 +48,7 @@ A powerful, multi-tenant email campaign platform built with Next.js that enables
 - Protected routes with JWT authentication
 - Organization-scoped data access
 - Comprehensive error handling
+- Automatic rate limit headers (X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset)
 
 ## Tech Stack
 
@@ -58,6 +65,7 @@ A powerful, multi-tenant email campaign platform built with Next.js that enables
   - CSV: papaparse
 - **Validation**: Zod
 - **Sanitization**: DOMPurify (XSS prevention)
+- **Rate Limiting**: @upstash/ratelimit + @upstash/redis (optional)
 - **Styling**: Tailwind CSS 4
 - **Testing**: Jest + React Testing Library
 
@@ -70,6 +78,7 @@ A powerful, multi-tenant email campaign platform built with Next.js that enables
 - Redis (for background job processing)
 - SendGrid API key (for sending emails)
 - Google OAuth credentials (optional, for Google sign-in)
+- Upstash Redis (optional, for API rate limiting)
 
 ### Installation
 
@@ -371,6 +380,72 @@ redis-cli
 > LLEN bull:email-campaign:active
 ```
 
+## API Rate Limiting
+
+CSV Mailer supports optional API rate limiting using Upstash Redis to protect against abuse and ensure fair usage.
+
+### Configuration
+
+Rate limiting requires Upstash Redis credentials. If not configured, all requests pass through without rate limiting.
+
+1. **Sign up for Upstash**: Visit [https://console.upstash.com/](https://console.upstash.com/)
+2. **Create a Redis database**: Choose a region close to your deployment
+3. **Get credentials**: Copy REST URL and REST Token
+4. **Add to `.env`**:
+
+```env
+UPSTASH_REDIS_REST_URL="https://your-redis.upstash.io"
+UPSTASH_REDIS_REST_TOKEN="your-upstash-token"
+```
+
+### Rate Limits
+
+Different endpoints have different rate limits based on their sensitivity:
+
+| Endpoint Type | Limit | Window | Identifier |
+|--------------|-------|--------|------------|
+| Authentication (login, signup) | 5 requests | 15 minutes | IP address |
+| Email Processing | 10 requests | 1 minute | Organization ID |
+| General API (CRUD operations) | 100 requests | 1 minute | IP address |
+| File Uploads | 20 uploads | 1 hour | IP address |
+
+### Response Headers
+
+When rate limiting is enabled, all responses include:
+- `X-RateLimit-Limit`: Maximum requests allowed
+- `X-RateLimit-Remaining`: Remaining requests in current window
+- `X-RateLimit-Reset`: Unix timestamp when limit resets
+
+### Rate Limit Exceeded
+
+When rate limit is exceeded, the API returns:
+- **Status Code**: `429 Too Many Requests`
+- **Response Body**:
+```json
+{
+  "error": "Too many requests",
+  "message": "Rate limit exceeded. Please try again later.",
+  "limit": 100,
+  "remaining": 0,
+  "reset": "2024-01-15T10:30:00.000Z"
+}
+```
+- **Headers**: `Retry-After` header indicates seconds until retry
+
+### Customization
+
+Rate limits can be adjusted in `src/lib/ratelimit.ts`:
+
+```typescript
+export const apiRateLimiter = redis
+  ? new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(100, '1 m'), // Adjust here
+      analytics: true,
+    })
+  : null;
+```
+
 ## Development
 
 ### Database Migrations
@@ -413,9 +488,8 @@ Docker support is planned for easy self-hosting.
 
 ## Known Limitations
 
-1. **No API Rate Limiting**: API endpoints not rate-limited (open to abuse)
-2. **No Email Tracking**: No open/click tracking (SendGrid webhooks not implemented)
-3. **Redis Dependency**: Background jobs require Redis to be running
+1. **No Email Tracking**: No open/click tracking (SendGrid webhooks not implemented)
+2. **Redis Dependency**: Background jobs require Redis to be running
 
 See [NEXT_STEPS.md](NEXT_STEPS.md) for planned improvements.
 

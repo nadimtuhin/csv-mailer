@@ -33,6 +33,8 @@
     "@tiptap/starter-kit": "^2.11.7",
     "@types/bcrypt": "^5.0.2",
     "@types/jsonwebtoken": "^9.0.9",
+    "@upstash/ratelimit": "^2.0.7",
+    "@upstash/redis": "^1.35.6",
     "bcrypt": "^5.1.1",
     "bullmq": "^5.63.0",
     "date-fns": "^4.1.0",

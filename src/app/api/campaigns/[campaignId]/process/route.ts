@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { addCampaignProcessJob } from '@/lib/queue';
+import { applyEmailRateLimit } from '@/lib/ratelimit';
 import type { Campaign } from '@prisma/client';
 
 /**
@@ -13,6 +14,12 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { campaignId: string } }
 ) {
+  // Apply rate limiting (10 requests per minute per organization)
+  const rateLimitResponse = await applyEmailRateLimit(request);
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
   const { campaignId } = params;
   let retryFailed = false;
 

@@ -3,9 +3,16 @@ import prisma from '@/lib/prisma'; // Import the Prisma client instance
 
 import { NextRequest } from 'next/server'; // Import NextRequest for query params
 import { sanitizeHTML, sanitizeName } from '@/lib/sanitize';
+import { applyApiRateLimit } from '@/lib/ratelimit';
 
 // GET /api/templates - Retrieve non-archived templates by default (tenant-scoped)
 export async function GET(request: NextRequest) {
+  // Apply rate limiting (100 requests per minute)
+  const rateLimitResponse = await applyApiRateLimit(request);
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
   const { searchParams } = new URL(request.url);
   const includeArchived = searchParams.get('includeArchived') === 'true';
 
@@ -40,7 +47,13 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/templates - Create a new template (tenant-scoped)
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  // Apply rate limiting (100 requests per minute)
+  const rateLimitResponse = await applyApiRateLimit(request);
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
   // Get organizationId from middleware-set header
   const organizationId = request.headers.get('x-organization-id');
 
@@ -88,7 +101,13 @@ export async function POST(request: Request) {
 }
 
 // PUT /api/templates - Update an existing template (tenant-scoped)
-export async function PUT(request: Request) {
+export async function PUT(request: NextRequest) {
+  // Apply rate limiting (100 requests per minute)
+  const rateLimitResponse = await applyApiRateLimit(request);
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
   // Get organizationId from middleware-set header
   const organizationId = request.headers.get('x-organization-id');
 
@@ -163,6 +182,12 @@ export async function PUT(request: Request) {
 
 // DELETE /api/templates?id=... - Archive (soft delete) a template (tenant-scoped)
 export async function DELETE(request: NextRequest) {
+  // Apply rate limiting (100 requests per minute)
+  const rateLimitResponse = await applyApiRateLimit(request);
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
 
