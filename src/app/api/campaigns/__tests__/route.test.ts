@@ -26,6 +26,12 @@ jest.mock('fs/promises', () => ({
   unlink: jest.fn(),
 }));
 
+// Mock BullMQ queue functions
+jest.mock('@/lib/queues/campaignQueue', () => ({
+  enqueueCampaignProcessing: jest.fn().mockResolvedValue({ id: 'mock-job-id' }),
+  enqueueScheduledCampaign: jest.fn().mockResolvedValue({ id: 'mock-scheduled-job-id' }),
+}));
+
 // Get typed mocks
 const mockFindMany = jest.mocked(prisma.campaign.findMany);
 const mockCreate = jest.mocked(prisma.campaign.create);
