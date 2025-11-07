@@ -26,6 +26,9 @@ jest.mock('fs/promises', () => ({
   unlink: jest.fn(),
 }));
 
+// Mock sanitize module to avoid ESM parsing issues with isomorphic-dompurify
+jest.mock('@/lib/sanitize');
+
 // Get typed mocks
 const mockFindMany = jest.mocked(prisma.campaign.findMany);
 const mockCreate = jest.mocked(prisma.campaign.create);

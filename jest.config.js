@@ -21,6 +21,10 @@ const customJestConfig = {
   transform: {
     '^.+\\.(ts|tsx|js|jsx)$': ['next/dist/build/swc/jest-transformer.js', {}],
   },
+  // Transform ESM modules from node_modules
+  transformIgnorePatterns: [
+    'node_modules/(?!(isomorphic-dompurify|parse5|jsdom|entities)/)',
+  ],
 }
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async

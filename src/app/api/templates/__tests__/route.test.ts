@@ -15,6 +15,9 @@ jest.mock('@/lib/prisma', () => ({
   },
 }));
 
+// Mock sanitize module to avoid ESM parsing issues with isomorphic-dompurify
+jest.mock('@/lib/sanitize');
+
 // Get typed mocks using jest.mocked
 const mockFindMany = jest.mocked(prisma.template.findMany);
 const mockFindUnique = jest.mocked(prisma.template.findUnique);

@@ -216,9 +216,32 @@ describe('GET /api/auth/google/callback', () => {
       authProvider: 'google',
     };
 
+    const mockUserWithOrgs = {
+      ...mockUpdatedUser,
+      organizations: [
+        {
+          id: 'user-org-id',
+          userId: 'existing-user-id',
+          organizationId: 'org-id',
+          role: 'owner',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          organization: {
+            id: 'org-id',
+            name: 'User Org',
+            slug: 'user-org',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        },
+      ],
+    };
+
     mockGetTokensFromCode.mockResolvedValue(mockTokens as any);
     mockGetUserInfo.mockResolvedValue(mockGoogleUser);
-    mockUserFindUnique.mockResolvedValue(mockExistingUser);
+    mockUserFindUnique
+      .mockResolvedValueOnce(mockExistingUser)  // First call: check if user exists
+      .mockResolvedValueOnce(mockUserWithOrgs);  // Second call: fetch with organizations
     mockUserUpdate.mockResolvedValue(mockUpdatedUser);
     mockJwtSign.mockReturnValue('mock-jwt-token' as any);
 
@@ -275,9 +298,32 @@ describe('GET /api/auth/google/callback', () => {
       updatedAt: new Date(),
     };
 
+    const mockUserWithOrgs = {
+      ...mockLinkedUser,
+      organizations: [
+        {
+          id: 'user-org-id',
+          userId: 'linked-user-id',
+          organizationId: 'org-id',
+          role: 'owner',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          organization: {
+            id: 'org-id',
+            name: 'Linked User Org',
+            slug: 'linked-user-org',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        },
+      ],
+    };
+
     mockGetTokensFromCode.mockResolvedValue(mockTokens as any);
     mockGetUserInfo.mockResolvedValue(mockGoogleUser);
-    mockUserFindUnique.mockResolvedValue(mockLinkedUser);
+    mockUserFindUnique
+      .mockResolvedValueOnce(mockLinkedUser)  // First call: check if user exists
+      .mockResolvedValueOnce(mockUserWithOrgs);  // Second call: fetch with organizations
     mockJwtSign.mockReturnValue('mock-jwt-token' as any);
 
     const request = new NextRequest(
@@ -373,13 +419,40 @@ describe('GET /api/auth/google/callback', () => {
       id: 'user-id',
       email: 'user@example.com',
       password: 'pass',
+      name: 'User',
+      googleId: null,
+      picture: '',
+      authProvider: 'password' as const,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
 
+    const mockUserWithOrgs = {
+      ...mockUser,
+      organizations: [
+        {
+          id: 'user-org-id',
+          userId: 'user-id',
+          organizationId: 'org-id',
+          role: 'owner',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          organization: {
+            id: 'org-id',
+            name: 'User Org',
+            slug: 'user-org',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        },
+      ],
+    };
+
     mockGetTokensFromCode.mockResolvedValue(mockTokens as any);
     mockGetUserInfo.mockResolvedValue(mockGoogleUser);
-    mockUserFindUnique.mockResolvedValue(mockUser);
+    mockUserFindUnique
+      .mockResolvedValueOnce(mockUser)  // First call: check if user exists
+      .mockResolvedValueOnce(mockUserWithOrgs);  // Second call: fetch with organizations
     mockJwtSign.mockReturnValue('token' as any);
 
     const state = JSON.stringify({ redirectTo: '/templates' });
@@ -404,7 +477,7 @@ describe('GET /api/auth/google/callback', () => {
 
     mockGetTokensFromCode.mockResolvedValue(mockTokens as any);
     mockGetUserInfo.mockResolvedValue(mockGoogleUser);
-    mockFindUnique.mockRejectedValue(new Error('Database error'));
+    mockUserFindUnique.mockRejectedValue(new Error('Database error'));
 
     const request = new NextRequest(
       'http://localhost:3000/api/auth/google/callback?code=code'
@@ -429,13 +502,40 @@ describe('GET /api/auth/google/callback', () => {
       id: 'user-id',
       email: 'user@example.com',
       password: 'pass',
+      name: 'User',
+      googleId: null,
+      picture: '',
+      authProvider: 'password' as const,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
 
+    const mockUserWithOrgs = {
+      ...mockUser,
+      organizations: [
+        {
+          id: 'user-org-id',
+          userId: 'user-id',
+          organizationId: 'org-id',
+          role: 'owner',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          organization: {
+            id: 'org-id',
+            name: 'User Org',
+            slug: 'user-org',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        },
+      ],
+    };
+
     mockGetTokensFromCode.mockResolvedValue(mockTokens as any);
     mockGetUserInfo.mockResolvedValue(mockGoogleUser);
-    mockUserFindUnique.mockResolvedValue(mockUser);
+    mockUserFindUnique
+      .mockResolvedValueOnce(mockUser)  // First call: check if user exists
+      .mockResolvedValueOnce(mockUserWithOrgs);  // Second call: fetch with organizations
     mockJwtSign.mockReturnValue('token' as any);
 
     const request = new NextRequest(
