@@ -41,19 +41,59 @@ export async function POST(request: Request) {
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
-    // Create the user
-    const user = await prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-      },
+    // Create organization slug from email (before @)
+    const emailUsername = email.split('@')[0];
+    const baseSlug = emailUsername.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    let slug = baseSlug;
+    let slugSuffix = 1;
+
+    // Ensure slug is unique
+    while (await prisma.organization.findUnique({ where: { slug } })) {
+      slug = `${baseSlug}-${slugSuffix}`;
+      slugSuffix++;
+    }
+
+    // Create user, organization, and link them in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Create the user
+      const user = await tx.user.create({
+        data: {
+          email,
+          password: hashedPassword,
+        },
+      });
+
+      // Create organization for the user
+      const organization = await tx.organization.create({
+        data: {
+          name: `${emailUsername}'s Organization`,
+          slug,
+        },
+      });
+
+      // Link user to organization as owner
+      await tx.userOrganization.create({
+        data: {
+          userId: user.id,
+          organizationId: organization.id,
+          role: 'owner',
+        },
+      });
+
+      return { user, organization };
     });
 
     // Don't return the password hash in the response
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { password: _, ...userWithoutPassword } = user;
+    const { password: _, ...userWithoutPassword } = result.user;
 
-    return NextResponse.json(userWithoutPassword, { status: 201 }); // Created
+    return NextResponse.json(
+      {
+        user: userWithoutPassword,
+        organization: result.organization,
+      },
+      { status: 201 }
+    ); // Created
   } catch (error) {
     console.error('Signup Error:', error);
     // Differentiate between expected errors (like validation) and unexpected server errors

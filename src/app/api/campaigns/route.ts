@@ -23,12 +23,19 @@ interface CreateCampaignRequestBody {
   scheduledAt?: string | null; // Optional ISO string for scheduling
 }
 
-// GET /api/campaigns - List non-archived campaigns by default, supports limit
+// GET /api/campaigns - List non-archived campaigns by default, supports limit (tenant-scoped)
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const includeArchived = searchParams.get('includeArchived') === 'true';
     const limitParam = searchParams.get('limit');
     const limit = limitParam ? parseInt(limitParam, 10) : undefined;
+
+    // Get organizationId from middleware-set header (tenant isolation)
+    const organizationId = request.headers.get('x-organization-id');
+
+    if (!organizationId) {
+        return NextResponse.json({ message: 'Organization context required' }, { status: 400 });
+    }
 
     // Validate limit if provided
     if (limit !== undefined && (isNaN(limit) || limit <= 0)) {
@@ -37,14 +44,15 @@ export async function GET(request: NextRequest) {
 
     try {
         const campaigns = await prisma.campaign.findMany({
-            take: limit, // Add take for limiting results
+            take: limit,
             where: {
-                isArchived: includeArchived ? undefined : false, // Filter out archived unless requested
+                organizationId, // CRITICAL: Filter by organization for tenant isolation
+                isArchived: includeArchived ? undefined : false,
             },
             orderBy: {
-                createdAt: 'desc', // Show newest first
+                createdAt: 'desc',
             },
-            select: { // Select only necessary summary fields
+            select: {
                 id: true,
                 name: true,
                 status: true,
@@ -54,7 +62,7 @@ export async function GET(request: NextRequest) {
                 skippedCount: true,
                 createdAt: true,
                 updatedAt: true,
-                scheduledAt: true, // Add scheduledAt to the selection
+                scheduledAt: true,
             }
         });
         return NextResponse.json(campaigns);
@@ -66,9 +74,17 @@ export async function GET(request: NextRequest) {
 }
 
 
-// POST /api/campaigns - Create a new campaign and queue recipients
+// POST /api/campaigns - Create a new campaign and queue recipients (tenant-scoped)
 export async function POST(request: Request) {
   let validatedPdfPath: string | null = null; // Declare outside try block
+
+  // Get organizationId from middleware-set header
+  const organizationId = request.headers.get('x-organization-id');
+
+  if (!organizationId) {
+    return NextResponse.json({ message: 'Organization context required' }, { status: 400 });
+  }
+
   try {
     const body = (await request.json()) as CreateCampaignRequestBody;
     const {
@@ -88,7 +104,6 @@ export async function POST(request: Request) {
     if (!recipients || recipients.length === 0) {
       return NextResponse.json({ message: 'Recipient list cannot be empty.' }, { status: 400 });
     }
-    // TODO: Validate templateHtml content if needed (e.g., check for essential tags)
     if (!subject || !fromEmail || !replyToEmail) {
       return NextResponse.json({ message: 'Missing required campaign configuration (subject, sender emails).' }, { status: 400 });
     }
@@ -151,6 +166,7 @@ export async function POST(request: Request) {
         templateId: templateId, // Store template ID if available
         pdfTemplatePath: validatedPdfPath, // Store validated path
         scheduledAt: scheduledAt, // Store the Date object or null
+        organizationId, // CRITICAL: Associate with user's organization
         // Store template HTML directly on campaign if not using templateId relation rigorously
         // templateHtml: templateHtml, // Uncomment if storing HTML on campaign model
       },
@@ -249,6 +265,3 @@ export async function POST(request: Request) {
     );
   }
 }
-
-// TODO: Add GET /api/campaigns to list campaigns (Added above)
-// TODO: Add GET /api/campaigns/[campaignId] to get campaign details

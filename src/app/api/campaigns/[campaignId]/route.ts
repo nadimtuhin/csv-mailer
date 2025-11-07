@@ -3,38 +3,44 @@ import prisma from '@/lib/prisma';
 
 import { NextRequest } from 'next/server'; // Use NextRequest
 
-// GET /api/campaigns/[campaignId] - Get details for a specific campaign
+// GET /api/campaigns/[campaignId] - Get details for a specific campaign (tenant-scoped)
 export async function GET(
   request: NextRequest,
   context: { params: { campaignId: string } }
 ) {
-  const { params } = context; // Destructure params
-  const campaignId = params.campaignId; // Access campaignId from destructured params
+  const { params } = context;
+  const campaignId = params.campaignId;
+
+  // Get organizationId from middleware-set header (tenant isolation)
+  const organizationId = request.headers.get('x-organization-id');
+
+  if (!organizationId) {
+    return NextResponse.json({ message: 'Organization context required' }, { status: 400 });
+  }
 
   if (!campaignId) {
-      return NextResponse.json({ message: 'Campaign ID is required.' }, { status: 400 });
+    return NextResponse.json({ message: 'Campaign ID is required.' }, { status: 400 });
   }
 
   try {
-    const campaign = await prisma.campaign.findUnique({
-      where: { id: campaignId },
+    const campaign = await prisma.campaign.findFirst({
+      where: {
+        id: campaignId,
+        organizationId, // CRITICAL: Tenant isolation
+      },
       include: {
-        // Include recipient statuses, possibly paginated in the future
         recipients: {
-          orderBy: [ // Use an array for multiple order conditions
+          orderBy: [
             { status: 'asc' },
             { recipientEmail: 'asc' },
           ],
-          select: { // Select only needed fields for the detail view
+          select: {
             id: true,
             recipientEmail: true,
             status: true,
             errorMessage: true,
             processedAt: true,
           },
-          // Add pagination later if recipient lists get very large
-          // take: 100,
-          // skip: 0,
         },
       },
     });
@@ -42,10 +48,6 @@ export async function GET(
     if (!campaign) {
       return NextResponse.json({ message: 'Campaign not found.' }, { status: 404 });
     }
-
-    // Optionally calculate percentages or add other derived data here if needed
-    // const totalProcessed = campaign.sentCount + campaign.failedCount + campaign.skippedCount;
-    // const progressPercent = campaign.totalRecipients > 0 ? (totalProcessed / campaign.totalRecipients) * 100 : 0;
 
     return NextResponse.json(campaign);
 
@@ -56,31 +58,45 @@ export async function GET(
   }
 }
 
-// PATCH /api/campaigns/[campaignId] - Archive a specific campaign
+// PATCH /api/campaigns/[campaignId] - Archive a specific campaign (tenant-scoped)
 export async function PATCH(
   request: NextRequest,
   context: { params: { campaignId: string } }
 ) {
-  const { params } = context; // Destructure params
-  const campaignId = params.campaignId; // Access campaignId from destructured params
+  const { params } = context;
+  const campaignId = params.campaignId;
+
+  // Get organizationId from middleware-set header (tenant isolation)
+  const organizationId = request.headers.get('x-organization-id');
+
+  if (!organizationId) {
+    return NextResponse.json({ message: 'Organization context required' }, { status: 400 });
+  }
 
   if (!campaignId) {
     return NextResponse.json({ message: 'Campaign ID is required.' }, { status: 400 });
   }
 
   try {
-    // Check if the campaign exists
+    // Check if the campaign exists and belongs to user's organization
     const existingCampaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
-      select: { isArchived: true }, // Only need to check the archive status
+      select: { isArchived: true, organizationId: true },
     });
 
     if (!existingCampaign) {
       return NextResponse.json({ message: 'Campaign not found.' }, { status: 404 });
     }
 
+    // CRITICAL: Verify campaign belongs to user's organization (tenant isolation)
+    if (existingCampaign.organizationId !== organizationId) {
+      return NextResponse.json(
+        { message: 'Access denied: campaign belongs to different organization' },
+        { status: 403 }
+      );
+    }
+
     if (existingCampaign.isArchived) {
-      // Already archived, return success or indicate no change
       return NextResponse.json({ message: 'Campaign is already archived.' }, { status: 200 });
     }
 
@@ -98,6 +114,3 @@ export async function PATCH(
     return NextResponse.json({ message }, { status: 500 });
   }
 }
-
-// TODO: Add DELETE handler if needed (e.g., delete campaign and recipients)
-// TODO: Add PUT handler for updating campaign name/status manually if needed
