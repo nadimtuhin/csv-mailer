@@ -4,6 +4,7 @@ import path from 'path'; // Keep for path validation if needed
 import os from 'os';   // Keep for path validation if needed
 import { NextRequest } from 'next/server'; // Import NextRequest
 import fs from 'fs/promises'; // Keep for path validation if needed
+import { enqueueCampaignProcessing, enqueueScheduledCampaign } from '@/lib/queues/campaignQueue';
 
 // Interface for the request body to create a campaign
 interface RecipientData {
@@ -220,10 +221,32 @@ export async function POST(request: Request) {
     // --- End Create Campaign Recipient Records ---
 
 
-    // --- Trigger Background Processing (Simulated) ---
-    // In a real app, you'd enqueue a job here (e.g., BullMQ, Quirrel, Inngest)
-    // For now, we just return the campaign ID. Processing needs a separate trigger.
-    console.log(`Campaign ${campaign.id} created and recipients queued. Trigger processing separately.`);
+    // --- Trigger Background Processing ---
+    // Enqueue the campaign for processing using BullMQ
+    try {
+      if (scheduledAt) {
+        // Schedule the job for future execution
+        await enqueueScheduledCampaign(
+          {
+            campaignId: campaign.id,
+            organizationId: organizationId,
+          },
+          scheduledAt
+        );
+        console.log(`Campaign ${campaign.id} scheduled for processing at ${scheduledAt.toISOString()}`);
+      } else {
+        // Enqueue immediately for processing
+        await enqueueCampaignProcessing({
+          campaignId: campaign.id,
+          organizationId: organizationId,
+        });
+        console.log(`Campaign ${campaign.id} enqueued for immediate processing`);
+      }
+    } catch (queueError) {
+      console.error(`Failed to enqueue campaign ${campaign.id}:`, queueError);
+      // Campaign is created but not enqueued - log and continue
+      // User can manually trigger processing later
+    }
     // --- End Trigger Background Processing ---
 
 

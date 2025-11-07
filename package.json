@@ -6,6 +6,7 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
+    "workers": "ts-node -r tsconfig-paths/register src/workers.ts",
     "lint": "next lint",
     "test": "jest",
     "test:watch": "jest --watch"
@@ -30,8 +31,10 @@
     "@types/bcrypt": "^5.0.2",
     "@types/jsonwebtoken": "^9.0.9",
     "bcrypt": "^5.1.1",
+    "bullmq": "^5.63.0",
     "date-fns": "^4.1.0",
     "googleapis": "^164.1.0",
+    "ioredis": "^5.8.2",
     "jose": "^6.1.0",
     "jsonwebtoken": "^9.0.2",
     "mammoth": "^1.9.0",
@@ -61,6 +64,7 @@
     "prisma": "^6.6.0",
     "tailwindcss": "^4",
     "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
     "typescript": "^5"
   }
 }
