@@ -19,6 +19,7 @@ A powerful, multi-tenant email campaign platform built with Next.js that enables
 - **Background Job Processing**: Asynchronous email sending with BullMQ and Redis
 - **Automatic Unsubscribe**: CAN-SPAM compliant unsubscribe functionality
 - **Template Preview**: Preview email templates with sample data
+- **Pluggable Email Providers**: Support for multiple email providers (SendGrid, AWS SES, Fake mailer for testing)
 
 ### Multi-Tenancy
 
@@ -55,7 +56,7 @@ A powerful, multi-tenant email campaign platform built with Next.js that enables
 - **Framework**: Next.js 15 (App Router)
 - **Database**: SQLite with Prisma ORM
 - **Authentication**: JWT (jose) + bcrypt
-- **Email Service**: SendGrid
+- **Email Service**: SendGrid, AWS SES, or Fake mailer (pluggable adapters)
 - **Background Jobs**: BullMQ + Redis
 - **Rich Text Editor**: TipTap
 - **OAuth**: Google OAuth 2.0 (googleapis)
@@ -76,7 +77,10 @@ A powerful, multi-tenant email campaign platform built with Next.js that enables
 - Node.js 20 or higher
 - npm, yarn, pnpm, or bun
 - Redis (for background job processing)
-- SendGrid API key (for sending emails)
+- Email provider credentials:
+  - SendGrid API key, OR
+  - AWS SES credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION), OR
+  - Use 'fake' provider for testing (no credentials needed)
 - Google OAuth credentials (optional, for Google sign-in)
 - Upstash Redis (optional, for API rate limiting)
 
@@ -106,8 +110,16 @@ DATABASE_URL="file:./dev.db"
 # JWT Secret (generate with: openssl rand -base64 32)
 JWT_SECRET="your-secret-key-here"
 
-# SendGrid
+# Email Provider (sendgrid, ses, or fake)
+EMAIL_PROVIDER="sendgrid"
+
+# SendGrid (if using sendgrid provider)
 SENDGRID_API_KEY="your-sendgrid-api-key"
+
+# AWS SES (if using ses provider)
+# AWS_REGION="us-east-1"
+# AWS_ACCESS_KEY_ID="your-aws-access-key-id"
+# AWS_SECRET_ACCESS_KEY="your-aws-secret-access-key"
 
 # Google OAuth (optional)
 GOOGLE_CLIENT_ID="your-google-client-id"
@@ -378,6 +390,102 @@ redis-cli
 > KEYS bull:*
 > LLEN bull:email-campaign:waiting
 > LLEN bull:email-campaign:active
+```
+
+## Email Providers
+
+CSV Mailer supports multiple email service providers through a flexible adapter system. You can easily switch between providers or use a fake mailer for testing.
+
+### Available Providers
+
+| Provider | Description | Use Case |
+|----------|-------------|----------|
+| **SendGrid** | SendGrid API (default) | Production email sending with excellent deliverability |
+| **AWS SES** | Amazon Simple Email Service | AWS-based deployments, cost-effective for high volume |
+| **Fake** | Mock adapter for testing | Development and testing without sending real emails |
+
+### Configuration
+
+Set the `EMAIL_PROVIDER` environment variable to choose your provider:
+
+```env
+EMAIL_PROVIDER="sendgrid"  # Options: sendgrid, ses, fake
+```
+
+### SendGrid Setup
+
+1. Sign up at [SendGrid](https://sendgrid.com/)
+2. Create an API key
+3. Configure environment variables:
+
+```env
+EMAIL_PROVIDER="sendgrid"
+SENDGRID_API_KEY="your-sendgrid-api-key"
+```
+
+### AWS SES Setup
+
+1. Set up AWS SES in your AWS account
+2. Verify your sender email addresses/domains
+3. Create IAM credentials with SES sending permissions
+4. Configure environment variables:
+
+```env
+EMAIL_PROVIDER="ses"
+AWS_REGION="us-east-1"
+AWS_ACCESS_KEY_ID="your-aws-access-key-id"
+AWS_SECRET_ACCESS_KEY="your-aws-secret-access-key"
+```
+
+**Note**: AWS SES starts in sandbox mode. Request production access to send to any email address.
+
+### Fake Mailer (Testing)
+
+For development and testing without sending real emails:
+
+```env
+EMAIL_PROVIDER="fake"
+```
+
+The fake adapter:
+- Logs all emails to console
+- Stores emails in memory for inspection
+- Simulates email sending with 100ms delay
+- No external API calls or costs
+
+### Adapter Features
+
+All adapters implement the same interface, providing:
+- **Consistent API**: Switch providers without code changes
+- **Error Handling**: Standardized error responses
+- **Message ID Tracking**: Each sent email receives a unique ID
+- **Attachment Support**: PDF and other file attachments
+- **Custom Headers**: List-Unsubscribe and other email headers
+
+### Programmatic Usage
+
+You can also use the adapters programmatically:
+
+```typescript
+import { getEmailAdapter, createEmailAdapter } from '@/lib/email';
+
+// Get the configured default adapter
+const adapter = getEmailAdapter();
+
+// Or create a specific adapter
+const sendgrid = createEmailAdapter('sendgrid');
+const ses = createEmailAdapter('ses');
+const fake = createEmailAdapter('fake');
+
+// Send email
+const result = await adapter.send({
+  to: 'recipient@example.com',
+  from: { email: 'sender@example.com', name: 'Sender Name' },
+  subject: 'Test Email',
+  html: '<p>Email content</p>',
+});
+
+console.log(result.success, result.messageId);
 ```
 
 ## API Rate Limiting

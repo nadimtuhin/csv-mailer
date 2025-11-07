@@ -18,6 +18,16 @@ const envSchema = z.object({
 
   // Email Service
   SENDGRID_API_KEY: z.string().min(1, 'SENDGRID_API_KEY is required'),
+  EMAIL_PROVIDER: z
+    .enum(['sendgrid', 'ses', 'fake'])
+    .optional()
+    .default('sendgrid'),
+
+  // AWS SES (optional - for AWS SES email provider)
+  AWS_REGION: z.string().optional(),
+  AWS_SES_REGION: z.string().optional(),
+  AWS_ACCESS_KEY_ID: z.string().optional(),
+  AWS_SECRET_ACCESS_KEY: z.string().optional(),
 
   // Redis (optional - for background jobs)
   REDIS_URL: z.string().optional().default('redis://localhost:6379'),

@@ -1,5 +1,4 @@
 import { Worker, Job } from 'bullmq';
-import sgMail from '@sendgrid/mail';
 import fs from 'fs/promises';
 import { PDFDocument } from 'pdf-lib';
 import prisma from '@/lib/prisma';
@@ -10,14 +9,20 @@ import {
   createRedisConnection,
 } from '@/lib/queue';
 import { generateUnsubscribeUrl } from '@/lib/unsubscribe';
+import { getEmailAdapter } from '@/lib/email';
 
-// Configure SendGrid
-if (!process.env.SENDGRID_API_KEY) {
-  console.error('FATAL ERROR: SENDGRID_API_KEY environment variable is not set.');
+// Get email adapter (SendGrid, SES, or Fake based on config)
+const emailAdapter = getEmailAdapter();
+
+console.log(`[Worker] Using email adapter: ${emailAdapter.getName()}`);
+
+if (!emailAdapter.isConfigured()) {
+  console.error(
+    `[Worker] FATAL ERROR: ${emailAdapter.getName()} adapter is not configured.`
+  );
+  console.error('[Worker] Check your environment variables for email provider credentials.');
   process.exit(1);
 }
-
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 /**
  * Process a single email job
@@ -150,10 +155,16 @@ async function processEmailJob(job: Job<EmailJobData>): Promise<void> {
       },
     };
 
-    // Send email via SendGrid
-    await sgMail.send(msg);
+    // Send email via configured adapter
+    const result = await emailAdapter.send(msg);
 
-    console.log(`[Worker] Email sent successfully to ${recipientEmail}`);
+    if (!result.success) {
+      throw new Error(result.error || 'Email send failed');
+    }
+
+    console.log(
+      `[Worker] Email sent successfully to ${recipientEmail} (Message ID: ${result.messageId})`
+    );
 
     // Update recipient status to sent
     await prisma.campaignRecipient.update({

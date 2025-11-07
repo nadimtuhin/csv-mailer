@@ -15,6 +15,7 @@
     "workers": "concurrently \"npm run worker:email\" \"npm run worker:scheduler\" \"npm run worker:cron\""
   },
   "dependencies": {
+    "@aws-sdk/client-ses": "^3.926.0",
     "@prisma/client": "^6.6.0",
     "@sendgrid/mail": "^8.1.5",
     "@tiptap/extension-color": "^2.11.7",
