@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma'; // Import the Prisma client instance
 
 import { NextRequest } from 'next/server'; // Import NextRequest for query params
+import { sanitizeHTML, sanitizeName } from '@/lib/sanitize';
 
 // GET /api/templates - Retrieve non-archived templates by default (tenant-scoped)
 export async function GET(request: NextRequest) {
@@ -63,11 +64,15 @@ export async function POST(request: Request) {
       );
     }
 
+    // Sanitize inputs to prevent XSS
+    const sanitizedName = sanitizeName(name);
+    const sanitizedHtml = sanitizeHTML(htmlContent, 'email');
+
     // Create template in the database with organizationId
     const newTemplate = await prisma.template.create({
       data: {
-        name,
-        htmlContent,
+        name: sanitizedName,
+        htmlContent: sanitizedHtml,
         organizationId, // CRITICAL: Associate with user's organization
       },
     });
@@ -132,12 +137,16 @@ export async function PUT(request: Request) {
       );
     }
 
+    // Sanitize inputs to prevent XSS
+    const sanitizedName = sanitizeName(name);
+    const sanitizedHtml = sanitizeHTML(htmlContent, 'email');
+
     // Update the template in the database
     const updatedTemplate = await prisma.template.update({
       where: { id: id },
       data: {
-        name,
-        htmlContent,
+        name: sanitizedName,
+        htmlContent: sanitizedHtml,
       },
     });
 
