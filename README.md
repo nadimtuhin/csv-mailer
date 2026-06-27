@@ -1,13 +1,13 @@
 # CSV Mailer
 
-A powerful, multi-tenant email campaign platform built with Next.js that enables organizations to send personalized bulk emails using CSV data and customizable templates.
+A multi-tenant email campaign platform built with Next.js. Send personalized bulk emails using CSV data and customizable templates.
 
 ## Features
 
 ### Core Functionality
 
 - **Bulk Email Campaigns**: Send personalized emails to thousands of recipients using CSV data
-- **Rich Template Editor**: Create beautiful email templates with a WYSIWYG editor (TipTap)
+- **Rich Template Editor**: Create email templates with a WYSIWYG editor (TipTap)
 - **Template Management**:
   - Create, edit, and archive HTML email templates
   - Upload DOCX templates and convert to HTML
@@ -83,7 +83,7 @@ npm install
 cp .env.example .env
 ```
 
-Edit `.env` and configure the following variables:
+Edit `.env` and configure:
 ```env
 # Database
 DATABASE_URL="file:./dev.db"
@@ -114,15 +114,12 @@ npx prisma db push
 npm run dev
 ```
 
-6. Open [http://localhost:3000](http://localhost:3000) in your browser
+6. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ### Running Tests
 
 ```bash
-# Run all tests
 npm test
-
-# Run tests in watch mode
 npm run test:watch
 ```
 
@@ -241,8 +238,6 @@ Example template:
 
 ## Multi-Tenancy
 
-### Organization Isolation
-
 All data is automatically scoped to the user's current organization:
 - Templates belong to organizations
 - Campaigns belong to organizations
@@ -269,12 +264,12 @@ All data is automatically scoped to the user's current organization:
 
 See `.env.example` for all available configuration options.
 
-### Required Variables
+### Required
 - `DATABASE_URL` - Database connection string
 - `JWT_SECRET` - Secret for JWT token signing
 - `SENDGRID_API_KEY` - SendGrid API key for sending emails
 
-### Optional Variables
+### Optional
 - `GOOGLE_CLIENT_ID` - Google OAuth client ID
 - `GOOGLE_CLIENT_SECRET` - Google OAuth client secret
 - `GOOGLE_REDIRECT_URI` - OAuth callback URL
@@ -286,23 +281,15 @@ See `.env.example` for all available configuration options.
 After modifying `prisma/schema.prisma`:
 
 ```bash
-# Apply changes to database
 npx prisma db push
-
-# Regenerate Prisma Client
 npx prisma generate
-
-# View database in Prisma Studio
 npx prisma studio
 ```
 
 ### Code Quality
 
 ```bash
-# Run linter
 npm run lint
-
-# Format code
 npx prettier --write .
 ```
 
@@ -379,13 +366,6 @@ For issues and questions:
 - Open an issue on GitHub
 - Review existing tests for examples
 
-## Acknowledgments
-
-- Built with Next.js
-- Email delivery by SendGrid
-- Rich text editing by TipTap
-- Database by Prisma
-
 ---
 
-**Note**: This project is under active development. See [NEXT_STEPS.md](NEXT_STEPS.md) for detailed technical roadmap and current status.
+**Note**: This project is under active development. See [NEXT_STEPS.md](NEXT_STEPS.md) for the technical roadmap and current status.
