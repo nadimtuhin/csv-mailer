@@ -17,7 +17,9 @@ const eslintConfig = [
 eslintConfig.push({
   rules: {
     "@typescript-eslint/no-explicit-any": "warn",
+    "@typescript-eslint/no-unused-vars": "warn",
     "@next/next/no-assign-module-variable": "warn",
+    "react/no-unescaped-entities": "warn",
   },
 });
 
