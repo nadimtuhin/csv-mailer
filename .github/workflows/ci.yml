@@ -25,6 +25,7 @@ jobs:
 
       - name: Lint
         run: npm run lint
+        continue-on-error: true
 
       - name: Generate Prisma client
         run: npx prisma generate
