@@ -12,6 +12,7 @@ const customJestConfig = {
   testEnvironment: 'node',
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
+    '^isomorphic-dompurify$': '<rootDir>/__mocks__/isomorphic-dompurify.js',
   },
   testMatch: [
     '**/__tests__/**/*.[jt]s?(x)',
