@@ -188,7 +188,7 @@ describe('POST /api/auth/signup', () => {
     expect(response.status).toBe(409);
     expect(data.error).toBe('User with this email already exists');
     expect(mockBcryptHash).not.toHaveBeenCalled();
-    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockUserCreate).not.toHaveBeenCalled();
   });
 
   it('should handle invalid JSON body', async () => {
